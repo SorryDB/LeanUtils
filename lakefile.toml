@@ -4,3 +4,7 @@ defaultTargets = ["LeanUtils"]
 
 [[lean_lib]]
 name = "LeanUtils"
+
+[[lean_exe]]
+name = "KernelCheck"
+root = "LeanUtils.KernelCheck"

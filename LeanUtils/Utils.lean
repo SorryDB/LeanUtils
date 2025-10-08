@@ -15,6 +15,9 @@ deriving BEq
 is a tactic info or term info. -/
 def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     (x : MVarId → MetaM (Option Out)) : IO (Option <| SorryData Out) := do
+
+  IO.println s!"Inspecting {node.stx.prettyPrint}"
+
   match node with
   | .ofTacticInfo i =>
     match i.stx with
@@ -63,3 +66,45 @@ def extractInfoTrees (fileName : System.FilePath) : IO ( FileMap × List InfoTre
   let s ← IO.processCommands inputCtx parserState commandState
   let fileMap := FileMap.ofString input
   return (fileMap, s.commandState.infoState.trees.toList)
+
+
+/-
+Note: we may want to implememt the following functions in Python in order to
+only have to run them once per project, rather than once per Lean file.
+-/
+
+/-- Get the root directory of a Lean project, given the path to a file in the project. -/
+partial def getProjectRootDirPath (path : System.FilePath) : IO (System.FilePath) :=
+  go path
+where
+  go (path : System.FilePath) : IO System.FilePath := do
+    if ← path.isDir then
+      let contents := (← path.readDir).map IO.FS.DirEntry.fileName
+      if contents.contains "lean-toolchain" then
+        return path
+      else
+        let some path := path.parent | throw <| .userError s!"The Lean file {path} does not lie in a Lean project containing a toolchain file."
+        go path
+    else
+      let some path := path.parent | throw <| .userError "The file path provided does not lie in any directory."
+      go path
+
+/-- Get the path to all the oleans needed for a given Lean project. -/
+partial def getAllLakePaths (path : System.FilePath) : IO (Array System.FilePath) := do
+  unless ← path.pathExists do return #[]
+  let dirEntries := (← path.readDir).map IO.FS.DirEntry.path
+  if dirEntries.contains (path / ".lake") then
+    return (← getAllLakePaths <| path / ".lake/packages").push (path / ".lake/build/lib/lean")
+  else
+    let dirEntries ← dirEntries.filterM fun path ↦ path.isDir
+    return (← dirEntries.mapM getAllLakePaths).flatten
+
+/-- Construct the search path for a project.
+
+Note: we could avoid using this if we were using `lake env`. Currently we're not doing so as this would require
+running the command in the root directory of the Lean project we're extracting sorries from. -/
+def getProjectSearchPath (path : System.FilePath) : IO (System.SearchPath) := do
+  let rootDir ← getProjectRootDirPath path
+  let paths ← getAllLakePaths rootDir
+  let originalSearchPath ← getBuiltinSearchPath (← findSysroot)
+  return originalSearchPath.append paths.toList

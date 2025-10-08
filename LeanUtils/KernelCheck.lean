@@ -1,5 +1,7 @@
 import Lean
 import LeanUtils.Utils
+-- TODO - remove this once we have a real frontend
+import LeanUtils.ExtractSorry
 
 open Lean Meta Elab Term Expr Meta Tactic
 
@@ -37,17 +39,6 @@ def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
 #check TheoremVal.mk
 
 #check Expr.dbgToString
-
-/--
-  From https://github.com/leanprover-community/repl/blob/593cb8808ece84ce45368eb45eed845732ab04d0/REPL/Lean/InfoTree.lean#L16
-  Extract the range of a `Syntax` expressed as lines and columns. -/
--- Extracted from the private declaration `Lean.Elab.formatStxRange`,
--- in `Lean.Elab.InfoTree.Main`.
-def stxRange (fileMap : FileMap) (stx : Syntax) : Position × Position :=
-  let pos    := stx.getPos?.getD 0
-  let endPos := stx.getTailPos?.getD pos
-  (fileMap.toPosition pos, fileMap.toPosition endPos)
-
 
 inductive KernelCheckResult where
 | success
@@ -103,3 +94,22 @@ def kernelCheck (sorryFilePath: System.FilePath) (expr type : SerializedExpr) (t
         return (KernelCheckResult.error (← e.toMessageData.toString))
 
   return KernelCheckResult.success
+
+def main (args : List String) : IO UInt32  := do
+  if let some path := args[0]? then
+    IO.println "Running sorry extraction."
+    unsafe enableInitializersExecution
+    let path : System.FilePath := { toString := path }
+    let path ← IO.FS.realPath path
+    let projectSearchPath ← getProjectSearchPath path
+    searchPathRef.set projectSearchPath
+    let out := (← parseFile path).map ToJson.toJson
+
+    IO.println s!"Got sorries: {out}"
+
+    IO.eprintln s!"File extraction yielded"
+    IO.eprintln (toJson out)
+  else
+    IO.println "A path is needed."
+
+  return 0

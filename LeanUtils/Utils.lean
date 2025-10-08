@@ -53,7 +53,7 @@ instance : ToString ParsedSorry where
 
 /-- `extractInfoTree myLeanFile` takes as input the path to a Lean file and outputs
 the infotrees of the file, together with the `FileMap`. -/
-def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree) := do
+def extractInfoTrees (fileName : System.FilePath) : IO ( FileMap × List InfoTree) := do
   let input ← IO.FS.readFile fileName
   let inputCtx := Parser.mkInputContext input fileName.toString
   let (header, parserState, messages) ← Parser.parseHeader inputCtx

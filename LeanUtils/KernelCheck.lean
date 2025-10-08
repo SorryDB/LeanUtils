@@ -49,20 +49,12 @@ def stxRange (fileMap : FileMap) (stx : Syntax) : Position × Position :=
   (fileMap.toPosition pos, fileMap.toPosition endPos)
 
 
+inductive KernelCheckResult where
+| success
+| error (e: String)
 
-/-
-check that `expr` has type `type`
--/
--- TODO - change the error type to make it harder to accidentally return success
--- remove the 'panics'
-def kernelCheck (sorryFilePath: System.FilePath) (expr type : SerializedExpr) (targetSorry: ParsedSorry) (targetSorryFile: System.FilePath) (bannedNames : List Name) : CoreM (Option String) := do
-  let expr := deserializeExpr expr
-  let type := deserializeExpr type
 
-  if expr.containsConstantNames bannedNames then
-      return some "contains banned constant name."
-
-  let (_, trees) ← extractInfoTrees sorryFilePath
+def findTargetEnv (trees: List (InfoTree)) (targetSorry: ParsedSorry) : IO (Environment × TheoremVal) := do
   let matchingTrees := trees.filter (fun t => match t with
     | .context ctx t => ((ctx.mergeIntoOuter? none).map (fun p => p.parentDecl? == some (targetSorry.parentDecl))).getD false
     | _ => false
@@ -70,23 +62,44 @@ def kernelCheck (sorryFilePath: System.FilePath) (expr type : SerializedExpr) (t
 
   let tree := if matchingTrees.length == 1 then matchingTrees[0]! else (panic "Expected exactly one one matching tree, found {matchingTrees}")
   let a ← tree.visitM (m := Id) (postNode := fun ctx i cs as => do match i with
+    -- TODO - deduplicate this
     | .ofTermInfo ti => pure ((as.flatMap Option.toList).flatten ++ (if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then ([ctx]) else []))
-    | .ofTacticInfo ti => pure []
+    | .ofTacticInfo ti =>  pure ((as.flatMap Option.toList).flatten ++ (if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then ([ctx]) else []))
     | _ => pure []
   )
+
+
   let matchedCtxs := a.get!
   match matchedCtxs with
   | [ctx] =>
       if let some oldDecl :=  ctx.env.find? targetSorry.parentDecl then
         match oldDecl with
         | .thmInfo info =>
-          try
-            addDecl (Declaration.thmDecl {info with value := expr, type := type, name := ← mkFreshId})
-            return none
-          catch e =>
-            return some (← e.toMessageData.toString)
+          pure (ctx.env, info)
         | _ =>
-          return some "Unexpected constant type"
+          throw (IO.userError "Unexpected constant type")
       else
-        panic ("Missing parentDecl in environment")
-  | _ => pure (some "Expected exactly one ctx")
+        throw (IO.userError "Misisng parentDecl in environment")
+  | _ => throw (IO.userError "Expected exactly one ctx")
+
+/-
+check that `expr` has type `type`
+-/
+-- TODO - change the error type to make it harder to accidentally return success
+-- remove the 'panics'
+def kernelCheck (sorryFilePath: System.FilePath) (expr type : SerializedExpr) (targetSorry: ParsedSorry) (bannedNames : List Name) : IO (KernelCheckResult) := do
+  let expr := deserializeExpr expr
+  let type := deserializeExpr type
+  let (fileMap, trees) ← extractInfoTrees sorryFilePath
+  let (newEnv, val) ← findTargetEnv trees targetSorry
+  let _ ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := newEnv }) do
+    if expr.containsConstantNames bannedNames then
+      return (KernelCheckResult.error "contains banned constant name.")
+    else
+      try
+        addDecl (Declaration.thmDecl {val with value := expr, type := type, name := ← mkFreshId})
+        return (KernelCheckResult.success)
+      catch e =>
+        return (KernelCheckResult.error (← e.toMessageData.toString))
+
+  return KernelCheckResult.success

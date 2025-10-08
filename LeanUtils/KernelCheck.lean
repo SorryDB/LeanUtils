@@ -95,7 +95,7 @@ def kernelCheck (sorryFilePath: System.FilePath) (expr type : SerializedExpr) (t
 
   return KernelCheckResult.success
 
-def main (args : List String) : IO UInt32  := do
+def fakeMain (args : List String) : IO UInt32  := do
   if let some path := args[0]? then
     IO.println "Running sorry extraction."
     unsafe enableInitializersExecution

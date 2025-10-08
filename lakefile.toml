@@ -1,6 +1,6 @@
 name = "LeanUtils"
 version = "0.1.0"
-defaultTargets = ["LeanUtils"]
+defaultTargets = ["LeanUtils", "Main"]
 
 [[lean_lib]]
 name = "LeanUtils"

@@ -9,6 +9,22 @@ structure SorryData (Out : Type) where
   parentDecl : Name
 deriving BEq
 
+def printNode (node: Info): String := match node with
+  | Info.ofTacticInfo (i : TacticInfo) => "Tactic"
+  | Info.ofTermInfo (i : TermInfo) => "Term"
+  | Info.ofPartialTermInfo (i : PartialTermInfo) => "PartialTerm"
+  | Info.ofCommandInfo (i : CommandInfo) => "Command"
+  | Info.ofMacroExpansionInfo (i : MacroExpansionInfo) => "MacroExpansion"
+  | Info.ofOptionInfo (i : OptionInfo) => "OptionInfo"
+  | Info.ofFieldInfo (i : FieldInfo)=> "FieldInfo"
+  | Info.ofCompletionInfo (i : CompletionInfo) => "CompletionInfo"
+  | Info.ofUserWidgetInfo (i : UserWidgetInfo) => "UserWidget"
+  | Info.ofCustomInfo (i : CustomInfo) => "CustomInfo"
+  | Info.ofFVarAliasInfo (i : FVarAliasInfo) => "FVarAlias"
+  | Info.ofFieldRedeclInfo (i : FieldRedeclInfo) => "FiledReDecl"
+  | Info.ofDelabTermInfo (i : DelabTermInfo) => "DelabTerm"
+  | Info.ofChoiceInfo (i : ChoiceInfo) => "ChoiceInfo"
+
 -- #check ContextInfo
 
 /-- Visit a node in the info tree and apply function `x` if the node
@@ -16,13 +32,15 @@ is a tactic info or term info. -/
 def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     (x : MVarId → MetaM (Option Out)) : IO (Option <| SorryData Out) := do
 
-  IO.println s!"Inspecting {node.stx.prettyPrint}"
+
+  IO.println s!"Inspecting {printNode node} with syntax: {node.stx}"
 
   match node with
   | .ofTacticInfo i =>
     match i.stx with
     | `(tactic| sorry)
     | `(tactic| admit) =>
+      IO.println s!"Got tactic info: {i.stx.prettyPrint}"
       let some mvar := i.goalsBefore[0]? | return none
       let some mctx := (i.mctxBefore.decls.find? mvar) | return none
       match ← ctx.runMetaM mctx.lctx <| x mvar, ctx.parentDecl? with
@@ -30,6 +48,7 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
       | _, _ => return none
     | _ => return none
   | .ofTermInfo i =>
+    IO.println s!"Got term info: {i.stx.prettyPrint}"
     match i.stx with
     | `(term| sorry) => TermInfo.runMetaM i ctx do
       let some type := i.expectedType? | return none

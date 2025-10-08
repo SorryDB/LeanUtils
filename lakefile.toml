@@ -4,7 +4,3 @@ defaultTargets = ["leanutils"]
 
 [[lean_lib]]
 name = "LeanUtils"
-
-[[lean_exe]]
-name = "leanutils"
-root = "Main"

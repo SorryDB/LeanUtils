@@ -37,38 +37,12 @@ where
 def extractSorries (T : InfoTree) : IO (List <| SorryData Format) :=
   traverseInfoTree ppGoalIfNoMVar T
 
-/-- `extractInfoTree myLeanFile` takes as input the path to a Lean file and outputs
-the infotrees of the file, together with the `FileMap`. -/
-def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree) := do
-  let input ← IO.FS.readFile fileName
-  let inputCtx := Parser.mkInputContext input fileName.toString
-  let (header, parserState, messages) ← Parser.parseHeader inputCtx
-  -- TODO: do we need to specify the main module here?
-  let (env, messages) ← processHeader header {} messages inputCtx
-  let commandState := Command.mkState env messages
-  let s ← IO.processCommands inputCtx parserState commandState
-  let fileMap := FileMap.ofString input
-  return (fileMap, s.commandState.infoState.trees.toList)
-
 -- A hack: the sorry extraction method currently seems to return duplicates
 -- for some reason.
 def List.Dedup {α : Type} [DecidableEq α] : List α → List α
   | [] => []
   | cons a l =>  if a ∈ l then l.Dedup else a :: l.Dedup
 
-structure ParsedSorry where
-  statement : String
-  pos : Position
-  parentDecl : Name
-  hash : UInt64
-deriving ToJson, DecidableEq
-
-def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) : SorryData Out → ParsedSorry :=
-  fun ⟨out, stx, parentDecl⟩ =>
-    ⟨ToString.toString out, fileMap.toPosition stx.getPos?.get!, parentDecl, Hashable.hash <| ToString.toString out⟩
-
-instance : ToString ParsedSorry where
-  toString a := ToString.toString <| ToJson.toJson a
 
 /-- `parseFile myLeanFile` extracts the sorries contained in the Lean file `myLeanFile`. -/
 def parseFile (path : System.FilePath) : IO (List ParsedSorry) := do

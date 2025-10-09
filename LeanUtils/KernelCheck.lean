@@ -70,7 +70,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
       else
         return head
     | .ofTacticInfo ti =>
-
+      -- TODO - do we need the 'mctxBefore' stuff from 'visitSorryNode'?
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         return head ++ ([(ctx, none, some goal)])

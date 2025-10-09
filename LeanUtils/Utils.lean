@@ -47,7 +47,6 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
   match node with
   | .ofTacticInfo i =>
     if isSorryTactic i.stx then
-      IO.println s!"Visit Got tactic info: {i.stx.prettyPrint}"
       let some mvar := i.goalsBefore[0]? | return none
       let some mctx := (i.mctxBefore.decls.find? mvar) | return none
       match ← ctx.runMetaM mctx.lctx <| x mvar, ctx.parentDecl? with
@@ -55,7 +54,6 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
       | _, _ => return none
     else return none
   | .ofTermInfo i =>
-    IO.println s!"Visit Got term info: {i.stx.prettyPrint}"
     if isSorryTerm i.stx then TermInfo.runMetaM i ctx do
       let some type := i.expectedType? | return none
       match ← x (← mkFreshExprMVar type).mvarId!, ctx.parentDecl? with

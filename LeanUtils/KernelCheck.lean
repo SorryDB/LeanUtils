@@ -64,7 +64,6 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
     | .ofTermInfo ti =>
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTerm ti.stx then do
         if let some type := ti.expectedType? then
-          IO.println "Got term mode"
           return head ++ ([(ctx, some (type), none)])
         else
           return head ++ [(ctx, none, none)]
@@ -73,7 +72,6 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
     | .ofTacticInfo ti =>
 
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
-        IO.println s!"Good tactic info: {ti.stx}"
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         return head ++ ([(ctx, none, some goal)])
       else
@@ -139,16 +137,17 @@ def main (args : List String) : IO UInt32  := do
     let targetEnvs ← trees.mapM (fun t => findTargetEnv t firstSorry)
 
     let targetEnvs := targetEnvs.flatten
-    -- We found all TargetEnvData corresponding to the target sorry.
-    -- There might be both term-mode and tactic-mode infotrees for the same 'sorry' in the .lean file,
-    -- so just pick any infotree
-    let some singleData := targetEnvs[0]? | throw (IO.userError s!"Unexpected targetEnv len: {targetEnvs.length}")
+    -- We might have both term-mode and tactic-mode info trees for the same source-level 'sorry'
+    -- (since the 'sorry' tactic will end up emitting a 'sorry' term)
+    -- We just pick the first one - as long as they all have the same type (which we check),
+    -- shouldn't matter
+    let some singleData := targetEnvs[0]? | throw (IO.userError s!"Did not find any targetEnv")
+    if !targetEnvs.all (fun d => d.type == singleData.type) then
+      throw (IO.userError "Found different types for infotrees corresponding to same sorry")
+
 
     singleData.ctx.runMetaM {} do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
-      IO.println s!"Got elabed expr: {elabedExpr}"
-      -- TODO - fix bannedNames
-      IO.println s!"Got type: {singleData.type}"
       let res ←  kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
       IO.println s!"Kernel check: {repr res}"
 

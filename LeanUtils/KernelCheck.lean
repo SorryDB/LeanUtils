@@ -30,11 +30,12 @@ partial def Lean.Expr.all (e : Expr) (p : Expr → Bool) : Bool :=
   | .letE _ ty val bd _ => ty.all p && val.all p && bd.all p
   | .mdata _ b      => b.all p
   | .proj _ _ b     => b.all p
-  | _               => true
+  | _               => false
 
 def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
   e.all (fun x => match x with
     | .const x _ => x ∈ names
+    | .mvar _ => false
     | _ => true)
 
 #check TheoremVal.mk
@@ -44,6 +45,7 @@ def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
 inductive KernelCheckResult where
 | success
 | error (e: String)
+deriving Repr
 
 
 structure TargetEnvData where
@@ -115,7 +117,8 @@ check that `expr` has type `type`
 -- remove the 'panics'
 def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckResult) := do
   let expr := deserializeExpr expr
-  let _ ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
+  let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
+    IO.println s!"Weird metavariable: {repr expr}"
     if expr.containsConstantNames bannedNames then
       return (KernelCheckResult.error "contains banned constant name.")
     else
@@ -125,7 +128,7 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
       catch e =>
         return (KernelCheckResult.error (← e.toMessageData.toString))
 
-  return KernelCheckResult.success
+  return res
 
 def main (args : List String) : IO UInt32  := do
   if let [path, rawExpr] := args then
@@ -167,7 +170,10 @@ def main (args : List String) : IO UInt32  := do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
       IO.println s!"Got elabed expr: {elabedExpr}"
       -- TODO - fix bannedNames
-      kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
+      IO.println s!"Got type: {singleData.type}"
+      let res ←  kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
+      IO.println s!"Kernel check: {repr res}"
+
   else
     throw (IO.userError "Requires a path and expr string")
   return 0

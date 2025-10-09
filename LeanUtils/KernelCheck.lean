@@ -53,13 +53,17 @@ structure TargetEnvData where
 
 
 
-def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (Option TargetEnvData) := do
+def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEnvData) := do
+  IO.println "Running findTargetEnv"
   -- TODO - explain why an empty LocalContext is okay. Maybe - local context occurs within TermElabM - we're at top-level decl, so no local context
-  let a ←  (do (tree.visitM (m := IO) (postNode := fun ctx i cs as => match i with
+  let a ←  (do (tree.visitM (m := IO) (postNode := fun ctx i cs as => do
+    let head := (as.flatMap Option.toList).flatten
+    IO.println s!"Got head: {head.length}"
+    match i with
     -- TODO - deduplicate this
     | .ofTermInfo ti =>
-      let head := (as.flatMap Option.toList).flatten
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
+        IO.println s!"Found matching term sorry pos with type: {ti.expectedType?}"
         if let some type := ti.expectedType? then
           return head ++ ([(ctx, some (type), none)])
         else
@@ -67,17 +71,21 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (Option Target
       else
         return head
     | .ofTacticInfo ti =>
-      let head := (as.flatMap Option.toList).flatten
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         return head ++ ([(ctx, none, some goal)])
       else
         return head
-    | _ => pure []
+    | _ => return head
+
   )))
 
+  IO.println "IsSome: {a.isSome}"
+
   let matchedCtxs := a.get!
-  let targetDatas ← (matchedCtxs.mapM (fun (ctx, type, goal) =>
+  IO.println s!"Matched len: {matchedCtxs.length}"
+  let targetDatas ← (matchedCtxs.mapM (fun (ctx, type, goal) => do
+    IO.println s!"Checking type: {type}"
     ctx.runMetaM {} do
       if let some oldDecl :=  ctx.env.find? targetSorry.parentDecl then
         match oldDecl with
@@ -85,14 +93,12 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (Option Target
           match (type, goal) with
           | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type} : TargetEnvData)]
           | _ => throwError "Bad case"
-        | _ =>
-          throwError ("Unexpected constant type")
+        | _ => throwError "Bad decl type"
       else
         throwError ("Missing parentDecl in environment")
   ))
   let allTargets := targetDatas.flatten--.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
-  let [singleTarget] := allTargets | throw (IO.userError s!"Expected exactly one target, found {allTargets.map (fun d => d.type)}")
-  return (some singleTarget)
+  return allTargets
 
   -- match matchedCtxs with
   -- | [(ctx, none, none)] => throwError ("Missing expected type for sorry")
@@ -139,8 +145,8 @@ def main (args : List String) : IO UInt32  := do
 
     IO.println s!"Initial tree count: {trees.length}"
 
-    let targetEnv := targetEnvs.flatMap (Option.toList)
-    let [singleData] := targetEnv | throw (IO.userError "Bad")
+    let targetEnvs := targetEnvs.flatten
+    let [singleData] := targetEnvs | throw (IO.userError "Bad")
 
     -- let prettyTrees := trees.filterMap (fun t => match t with
     --   | .context ctx t => match ctx with

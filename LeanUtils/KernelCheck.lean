@@ -99,7 +99,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
       else
         throwError ("Missing parentDecl in environment")
   ))
-  let allTargets := targetDatas.flatten--.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
+  let allTargets := targetDatas.flatten.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
   return allTargets
 
   -- match matchedCtxs with

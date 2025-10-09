@@ -108,9 +108,9 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
 
   return KernelCheckResult.success
 
-def fakeMain (args : List String) : IO UInt32  := do
+def main (args : List String) : IO UInt32  := do
   if let [path, rawExpr] := args then
-    IO.println "Running sorry extraction."
+    IO.println "Running new sorry extraction."
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path
@@ -118,16 +118,27 @@ def fakeMain (args : List String) : IO UInt32  := do
     searchPathRef.set projectSearchPath
     let out := (← parseFile path)
     let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
+    IO.println s!"Found sorry: {firstSorry}"
 
     let (fileMap, trees) ← extractInfoTrees path
+
+    IO.println s!"Initial tree count: {trees.length}"
+
+    let prettyTrees := trees.filterMap (fun t => match t with
+      | .context ctx t => match ctx with
+        | .commandCtx parent => some s!"Command"
+        | .parentDeclCtx _ => some "Parent"
+      | _ => none
+    )
+
+    IO.println s!"Got trees {prettyTrees}"
 
     let matchingTrees := trees.filterMap (fun t => match t with
       | .context ctx t => if (((ctx.mergeIntoOuter? none).map (fun p => p.parentDecl? == some (firstSorry.parentDecl))).getD false) then (ctx.mergeIntoOuter? none).map (fun ctx => (t, ctx)) else none
       | _ => none
     )
 
-    let [(tree, ctxInfo)] := matchingTrees | (throw (IO.userError "Expected exactly one one matching tree, found {matchingTrees}"))
-
+    let [(tree, ctxInfo)] := matchingTrees | (throw (IO.userError s!"Expected exactly one one matching tree, found count: {matchingTrees.length}"))
     ctxInfo.runMetaM {} do
       let targetData ← (findTargetEnv tree firstSorry rawExpr)
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr targetData.type)
@@ -136,5 +147,4 @@ def fakeMain (args : List String) : IO UInt32  := do
       kernelCheck path targetData (serializeExpr elabedExpr) targetData.type fileMap [`sorry]
   else
     throw (IO.userError "Requires a path and expr string")
-
   return 0

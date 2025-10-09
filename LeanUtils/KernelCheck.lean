@@ -70,7 +70,9 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
       else
         return head
     | .ofTacticInfo ti =>
-      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
+
+      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
+        IO.println s!"Good tactic info: {ti.stx}"
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         return head ++ ([(ctx, none, some goal)])
       else
@@ -87,6 +89,10 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
         | .thmInfo info =>
           match (type, goal) with
           | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type} : TargetEnvData)]
+          | (none, some goal) =>
+              let goalType ← goal.getType
+              IO.println s!"Goal type: {goalType}"
+              return [({ctx := ctx, theoremVal := info, type := goalType} : TargetEnvData)]
           | _ => throwError "Bad case"
         | _ => throwError "Bad decl type"
       else
@@ -133,7 +139,7 @@ def main (args : List String) : IO UInt32  := do
     IO.println s!"Initial tree count: {trees.length}"
 
     let targetEnvs := targetEnvs.flatten
-    let [singleData] := targetEnvs | throw (IO.userError "Bad")
+    let [singleData] := targetEnvs | throw (IO.userError s!"Unexpected targetEnv len: {targetEnvs.length}")
 
     singleData.ctx.runMetaM {} do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)

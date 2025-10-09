@@ -62,8 +62,9 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
     match i with
     -- TODO - deduplicate this
     | .ofTermInfo ti =>
-      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
+      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTerm ti.stx then do
         if let some type := ti.expectedType? then
+          IO.println "Got term mode"
           return head ++ ([(ctx, some (type), none)])
         else
           return head ++ [(ctx, none, none)]
@@ -129,17 +130,19 @@ def main (args : List String) : IO UInt32  := do
     let projectSearchPath ← getProjectSearchPath path
     searchPathRef.set projectSearchPath
     let out := (← parseFile path)
+    IO.println s!"Found sorry: {out}"
+    -- TODO - take sorry coordinates on command line, find first one matching
     let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
-    IO.println s!"Found sorry: {firstSorry}"
 
     let (fileMap, trees) ← extractInfoTrees path
 
     let targetEnvs ← trees.mapM (fun t => findTargetEnv t firstSorry)
 
-    IO.println s!"Initial tree count: {trees.length}"
-
     let targetEnvs := targetEnvs.flatten
-    let [singleData] := targetEnvs | throw (IO.userError s!"Unexpected targetEnv len: {targetEnvs.length}")
+    -- We found all TargetEnvData corresponding to the target sorry.
+    -- There might be both term-mode and tactic-mode infotrees for the same 'sorry' in the .lean file,
+    -- so just pick any infotree
+    let some singleData := targetEnvs[0]? | throw (IO.userError s!"Unexpected targetEnv len: {targetEnvs.length}")
 
     singleData.ctx.runMetaM {} do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)

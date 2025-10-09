@@ -32,18 +32,22 @@ def isSorryTactic (stx: Syntax): Bool := match stx with
 | `(tactic| admit)  => true
 | _ => false
 
+def isSorryTerm (stx: Syntax): Bool := match stx with
+| `(term| sorry) => true
+| _ => false
+
 /-- Visit a node in the info tree and apply function `x` if the node
 is a tactic info or term info. -/
 def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     (x : MVarId → MetaM (Option Out)) : IO (Option <| SorryData Out) := do
 
 
-  IO.println s!"Inspecting {printNode node} with syntax: {node.stx}"
+  --IO.println s!"Inspecting {printNode node} with syntax: {node.stx}"
 
   match node with
   | .ofTacticInfo i =>
     if isSorryTactic i.stx then
-      IO.println s!"Got tactic info: {i.stx.prettyPrint}"
+      IO.println s!"Visit Got tactic info: {i.stx.prettyPrint}"
       let some mvar := i.goalsBefore[0]? | return none
       let some mctx := (i.mctxBefore.decls.find? mvar) | return none
       match ← ctx.runMetaM mctx.lctx <| x mvar, ctx.parentDecl? with
@@ -51,14 +55,13 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
       | _, _ => return none
     else return none
   | .ofTermInfo i =>
-    IO.println s!"Got term info: {i.stx.prettyPrint}"
-    match i.stx with
-    | `(term| sorry) => TermInfo.runMetaM i ctx do
+    IO.println s!"Visit Got term info: {i.stx.prettyPrint}"
+    if isSorryTerm i.stx then TermInfo.runMetaM i ctx do
       let some type := i.expectedType? | return none
       match ← x (← mkFreshExprMVar type).mvarId!, ctx.parentDecl? with
       | some out, some name => return some ⟨out, i.stx, name⟩
       | _, _ => return none
-    | _ => return none
+    else return none
   | _ => return none
 
 structure ParsedSorry where

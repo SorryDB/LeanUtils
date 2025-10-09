@@ -118,7 +118,6 @@ check that `expr` has type `type`
 def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckResult) := do
   let expr := deserializeExpr expr
   let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
-    IO.println s!"Weird metavariable: {repr expr}"
     if expr.containsConstantNames bannedNames then
       return (KernelCheckResult.error "contains banned constant name.")
     else

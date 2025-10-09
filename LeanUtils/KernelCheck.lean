@@ -10,6 +10,7 @@ open Lean Meta Elab Term Expr Meta Tactic
 structure SerializedExpr where
   expr: Expr
 
+def serializeExpr (expr: Expr): SerializedExpr := { expr := expr }
 def deserializeExpr (expr: SerializedExpr): Expr := expr.expr
 
 def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
@@ -50,22 +51,25 @@ structure TargetEnvData where
   theoremVal: TheoremVal
   type: Expr
 
-def findTargetEnv (trees: List (InfoTree)) (targetSorry: ParsedSorry) : IO TargetEnvData := do
-  let matchingTrees := trees.filterMap (fun t => match t with
-    | .context ctx t => if (((ctx.mergeIntoOuter? none).map (fun p => p.parentDecl? == some (targetSorry.parentDecl))).getD false) then (ctx.mergeIntoOuter? none).map (fun ctx => (t, ctx)) else none
-    | _ => none
-  )
 
-  let [(tree, ctxInfo)] := matchingTrees | (throw (IO.userError "Expected exactly one one matching tree, found {matchingTrees}"))
+def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry) (rawExpr: String) : MetaM TargetEnvData := do
   -- TODO - explain why an empty LocalContext is okay. Maybe - local context occurs within TermElabM - we're at top-level decl, so no local context
-  let a ← ctxInfo.runMetaM {} (do (tree.visitM (m := MetaM) (postNode := fun ctx i cs as => match i with
+  let a ←  (do (tree.visitM (m := MetaM) (postNode := fun ctx i cs as => match i with
     -- TODO - deduplicate this
-    | .ofTermInfo ti => do pure ((as.flatMap Option.toList).flatten ++ (if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then ([(ctx, ti.expectedType?)]) else []))
+    | .ofTermInfo ti =>
+      let head := (as.flatMap Option.toList).flatten
+      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
+        if let some type := ti.expectedType? then
+          return head ++ ([(ctx, some (type))])
+        else
+          return head ++ [(ctx, none)]
+      else
+        return head
     | .ofTacticInfo ti =>
       let head := (as.flatMap Option.toList).flatten
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! then do
         let type ← if let [goal] := ti.goalsBefore then goal.getType else (throwError ("Found more than one goal"))
-        return head ++ ([(ctx, some type)])
+        return head ++ ([(ctx, some (type))])
       else
         return head
     | _ => pure []
@@ -73,33 +77,31 @@ def findTargetEnv (trees: List (InfoTree)) (targetSorry: ParsedSorry) : IO Targe
 
   let matchedCtxs := a.get!
   match matchedCtxs with
-  | [(ctx, some type)] =>
+  | [(ctx, some (type))] =>
       if let some oldDecl :=  ctx.env.find? targetSorry.parentDecl then
         match oldDecl with
         | .thmInfo info =>
           pure {env := ctx.env, theoremVal := info, type := type}
         | _ =>
-          throw (IO.userError "Unexpected constant type")
+          throwError ("Unexpected constant type")
       else
-        throw (IO.userError "Misisng parentDecl in environment")
-  | [(ctx, none)] => throw (IO.userError "Missing expected type for sorry")
-  | _ => throw (IO.userError "Expected exactly one ctx")
+        throwError ("Misisng parentDecl in environment")
+  | [(ctx, none)] => throwError ("Missing expected type for sorry")
+  | _ => throwError ("Expected exactly one ctx")
 
 /-
 check that `expr` has type `type`
 -/
 -- TODO - change the error type to make it harder to accidentally return success
 -- remove the 'panics'
-def kernelCheck (sorryFilePath: System.FilePath) (expr : SerializedExpr) (type: Expr) (targetSorry: ParsedSorry) (bannedNames : List Name) : IO (KernelCheckResult) := do
+def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckResult) := do
   let expr := deserializeExpr expr
-  let (fileMap, trees) ← extractInfoTrees sorryFilePath
-  let targetData ← findTargetEnv trees targetSorry
   let _ ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.env }) do
     if expr.containsConstantNames bannedNames then
       return (KernelCheckResult.error "contains banned constant name.")
     else
       try
-        addDecl (Declaration.thmDecl {sdjfsdf.theoremVal with value := expr, type := type, name := ← mkFreshId})
+        addDecl (Declaration.thmDecl {targetData.theoremVal with value := expr, type := type, name := ← mkFreshId})
         return (KernelCheckResult.success)
       catch e =>
         return (KernelCheckResult.error (← e.toMessageData.toString))
@@ -115,14 +117,24 @@ def fakeMain (args : List String) : IO UInt32  := do
     let projectSearchPath ← getProjectSearchPath path
     searchPathRef.set projectSearchPath
     let out := (← parseFile path)
-    let firstSorry := out[0]?
+    let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
 
-    -- do term elab
-    let expr: Expr := elabStringAsExpr rawExpr
+    let (fileMap, trees) ← extractInfoTrees path
 
-    IO.println s!"Got sorries: {out}"
-    kernelCheck path expr
+    let matchingTrees := trees.filterMap (fun t => match t with
+      | .context ctx t => if (((ctx.mergeIntoOuter? none).map (fun p => p.parentDecl? == some (firstSorry.parentDecl))).getD false) then (ctx.mergeIntoOuter? none).map (fun ctx => (t, ctx)) else none
+      | _ => none
+    )
+
+    let [(tree, ctxInfo)] := matchingTrees | (throw (IO.userError "Expected exactly one one matching tree, found {matchingTrees}"))
+
+    ctxInfo.runMetaM {} do
+      let targetData ← (findTargetEnv tree firstSorry rawExpr)
+      let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr targetData.type)
+      IO.println s!"Got elabed expr: {elabedExpr}"
+      -- TODO - fix bannedNames
+      kernelCheck path targetData (serializeExpr elabedExpr) targetData.type fileMap [`sorry]
   else
-    IO.println "A path is needed."
+    throw (IO.userError "Requires a path and expr string")
 
   return 0

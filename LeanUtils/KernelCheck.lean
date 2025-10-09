@@ -18,7 +18,7 @@ def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
   let stx := (Parser.runParserCategory (← getEnv) `term code).toOption.get!
   -- elaborate it into an expression
   withoutErrToSorry do
-    let expr ← elabTerm stx (some type)
+    let expr ← elabTerm stx (some type) (catchExPostpone := false)
     return expr
 
 partial def Lean.Expr.all (e : Expr) (p : Expr → Bool) : Bool :=
@@ -121,7 +121,7 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
 
 def main (args : List String) : IO UInt32  := do
   if let [path, rawExpr] := args then
-    IO.println "Running new sorry extraction."
+    IO.println "New Running new sorry extraction."
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path
@@ -148,6 +148,7 @@ def main (args : List String) : IO UInt32  := do
 
     singleData.ctx.runMetaM {} do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
+      IO.println s!"Elabed expr: {elabedExpr}"
       let res ←  kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
       IO.println s!"Kernel check: {repr res}"
 

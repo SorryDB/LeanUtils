@@ -14,13 +14,6 @@ structure SerializedExpr where
 def serializeExpr (expr: Expr): SerializedExpr := { expr := expr }
 def deserializeExpr (expr: SerializedExpr): Expr := expr.expr
 
-set_option trace.Elab.debug true
-
-#eval `trace ++ `Elab.debug
-
-#check Elab.async.set
-
-
 def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
@@ -54,10 +47,6 @@ def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
     | .mvar _ => false
     | _ => true)
 
-#check TheoremVal.mk
-
-#check Expr.dbgToString
-
 inductive KernelCheckResult where
 | success
 | error (e: String)
@@ -73,7 +62,7 @@ structure TargetEnvData where
 
 def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEnvData) := do
   -- TODO - explain why an empty LocalContext is okay. Maybe - local context occurs within TermElabM - we're at top-level decl, so no local context
-  let a ←  (do (tree.visitM (m := IO) (postNode := fun ctx i cs as => do
+  let a ←  (do (tree.visitM (m := IO) (postNode := fun ctx i _ as => do
     let head := (as.flatMap Option.toList).flatten
     match i with
     -- TODO - deduplicate this
@@ -106,7 +95,6 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
           | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type} : TargetEnvData)]
           | (none, some goal) =>
               let goalType ← goal.getType
-              IO.eprintln s!"Goal type: {goalType}"
               return [({ctx := ctx, theoremVal := info, type := goalType} : TargetEnvData)]
           | _ => throwError "Bad case"
         | _ => throwError "Bad decl type"
@@ -153,8 +141,6 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
 
 theorem foo: True := True.intro
 
-
-#check Exception
 def parseAndCheck (args : List String): IO KernelCheckOutput := do
   if let [path, rawExpr] := args then
     unsafe enableInitializersExecution
@@ -163,7 +149,6 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
     let projectSearchPath ← getProjectSearchPath path
     searchPathRef.set projectSearchPath
     let out := (← parseFile path)
-    IO.eprintln s!"Found sorry: {out}"
     -- TODO - take sorry coordinates on command line, find first one matching
     let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
 

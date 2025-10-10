@@ -39,8 +39,7 @@ partial def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Boo
   | .forallE _ ty bd _ => go ty || go bd
   | .letE _ ty val bd _ => go ty || go val || go bd
   | .mdata _ b      => go b
-  | .proj _ _ b     => go b
-  | _ => false
+  | .lit _ | .sort _ | .proj _ _ _|  .mvar _ | .fvar _ | .bvar _ => false
 
 inductive KernelCheckResult where
 | success

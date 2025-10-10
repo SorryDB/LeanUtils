@@ -8,7 +8,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        # TODO - decide if we want to test more versions
+        # We run lake with '+version' for each version in this array, with the exception of 'from-toolchain'
+        lean-version: [4.9.0, nightly, from-toolchain]
 
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+        with:
+          # For the special 'from-toolchain', we specify an empty string for build args,
+          # so that lake falls back to our 'lean-toolchain file'
+          build-args: "${{ matrix.lean-version == 'from-toolchain' && '' || '+matrix.lean-version' }}"

@@ -21,7 +21,11 @@ structure TargetEnvData where
 
 
 def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := do
+  setEnv data.ctx.env
   withMCtx data.mctx.get! do
+
+
+
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
@@ -33,7 +37,7 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
 
     let inputCtx := Parser.mkInputContext code "<argument>"
     let tokens := Parser.Module.updateTokens (Parser.getTokenTable data.ctx.env)
-    IO.eprintln s!"Got tokens: {inputCtx.input}"
+    IO.eprintln s!"Got new tokens: {inputCtx.input}"
     let s := Parser.tacticParser.fn.run
                 inputCtx {env := data.ctx.env, options := {}} tokens (Parser.mkParserState inputCtx.input)
 
@@ -48,7 +52,10 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
     if !results.isEmpty then
       throwError s!"Tactic produced subgoals: {repr results}"
     else
-      pure (Expr.mvar goal)
+      let expr ← Lean.instantiateMVars (Expr.mvar goal)
+      IO.eprintln s!"Expr: {expr}"
+      pure expr
+
   else
     let stx := (Parser.runParserCategory (← getEnv) `term code)
     let stx ← match stx with
@@ -199,7 +206,20 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
     if !targetEnvs.all (fun d => d.type == singleData.type) then
       throw (IO.userError "Found different types for infotrees corresponding to same sorry")
 
-    singleData.ctx.runMetaM {} do
+
+    let lctx ← match singleData.mctx with
+    | .some mctx => do
+      let some mvarDecl := mctx.findDecl? singleData.goal.get! | throw (IO.userError "Failed to get mvar decl")
+      let lctx := mvarDecl.lctx
+      pure lctx
+    | none => pure {}
+    IO.println s!"Got lxtx: {lctx.lastDecl.map (fun l => l.userName)}"
+    -- let some mvarDecl := data.mctx.get!.findDecl? goal
+    --   | throwError "unknown goal {goal.name}"
+    -- let lctx := mvarDecl.lctx
+    -- withLCtx lctx do
+
+    singleData.ctx.runMetaM lctx do
       --setEnv singleData.ctx.env
       let mut elabedExpr := none
       try

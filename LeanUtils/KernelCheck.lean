@@ -2,6 +2,7 @@ import Lean
 import LeanUtils.Utils
 -- TODO - remove this once we have a real frontend
 import LeanUtils.ExtractSorry
+import Lean.Meta.Basic
 
 open Lean Meta Elab Term Expr Meta Tactic
 
@@ -13,13 +14,23 @@ structure SerializedExpr where
 def serializeExpr (expr: Expr): SerializedExpr := { expr := expr }
 def deserializeExpr (expr: SerializedExpr): Expr := expr.expr
 
+set_option trace.Elab.debug true
+
+#eval `trace ++ `Elab.debug
+
+#check Elab.async.set
+
+
 def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
+
+  -- let a := trace.Elab.debug.set · true
+  -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
   let stx := (Parser.runParserCategory (← getEnv) `term code).toOption.get!
   -- elaborate it into an expression
   withoutErrToSorry do
-    let expr ← elabTerm stx (some type) (catchExPostpone := false)
-    return expr
+    let expr ← elabTermAndSynthesize stx (some type)
+    Lean.instantiateMVars expr
 
 partial def Lean.Expr.all (e : Expr) (p : Expr → Bool) : Bool :=
   if !p e then false else
@@ -119,9 +130,10 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
 
   return res
 
+theorem foo: True := True.intro
+
 def main (args : List String) : IO UInt32  := do
   if let [path, rawExpr] := args then
-    IO.println "New Running new sorry extraction."
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path
@@ -148,7 +160,7 @@ def main (args : List String) : IO UInt32  := do
 
     singleData.ctx.runMetaM {} do
       let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
-      IO.println s!"Elabed expr: {elabedExpr}"
+      IO.println s!"Elabed expr: {elabedExpr} type: {← inferType elabedExpr}"
       let res ←  kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
       IO.println s!"Kernel check: {repr res}"
 

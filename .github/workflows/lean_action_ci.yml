@@ -23,4 +23,4 @@ jobs:
         with:
           # For the special 'from-toolchain', we specify an empty string for build args,
           # so that lake falls back to our 'lean-toolchain file'
-          build-args: matrix.lean-version == 'from-toolchain' && '' || format('+{}', matrix.lean-version)
+          build-args: ${{ matrix.lean-version 'from-toolchain' && '' || format('+{}', matrix.lean-version)  }}

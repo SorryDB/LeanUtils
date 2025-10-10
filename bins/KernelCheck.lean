@@ -1,6 +1,3 @@
-import Lean
-import LeanUtils.Utils
--- TODO - remove this once we have a real frontend
 import LeanUtils.ExtractSorry
 import Lean.Meta.Basic
 
@@ -116,7 +113,7 @@ check that `expr` has type `type`
 def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckOutput) := do
   let expr := deserializeExpr expr
   let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
-    let bannedNames := (expr.collectNames bannedNames).Dedup
+    let bannedNames := (expr.collectNames bannedNames).dedup'
     if !bannedNames.isEmpty then
       return {
         success := false,

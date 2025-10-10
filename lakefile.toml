@@ -1,10 +1,14 @@
 name = "LeanUtils"
 version = "0.1.0"
-defaultTargets = ["LeanUtils", "Main"]
+defaultTargets = ["KernelCheck", "ExtractSorry"]
 
 [[lean_lib]]
 name = "LeanUtils"
 
 [[lean_exe]]
 name = "KernelCheck"
-root = "LeanUtils.KernelCheck"
+root = "bins.KernelCheck"
+
+[[lean_exe]]
+name = "ExtractSorry"
+root = "bins.KernelCheck"

@@ -30,16 +30,20 @@ def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
     -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
     elabTermAndSynthesize stx (some type)
 
-partial def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
-  let go a := Lean.Expr.containsConstantNames a names
+/-
+  Find all constant names in `e` that occur in `names` list
+  We don't unfold any constant definitions
+-/
+partial def Lean.Expr.collectNames (e : Expr) (names : List Name) : List Name :=
+  let go a := Lean.Expr.collectNames a names
   match e with
-  | .const name _ => name ∈ names
-  | .app f a        => go f || go a
-  | .lam _ ty bd _  => go ty|| go bd
-  | .forallE _ ty bd _ => go ty || go bd
-  | .letE _ ty val bd _ => go ty || go val || go bd
+  | .const name _ => if name ∈ names then [name] else []
+  | .app f a        => go f ++ go a
+  | .lam _ ty bd _  => go ty ++ go bd
+  | .forallE _ ty bd _ => go ty ++ go bd
+  | .letE _ ty val bd _ => go ty ++ go val ++ go bd
   | .mdata _ b      => go b
-  | .lit _ | .sort _ | .proj _ _ _|  .mvar _ | .fvar _ | .bvar _ => false
+  | .lit _ | .sort _ | .proj _ _ _|  .mvar _ | .fvar _ | .bvar _ => []
 
 inductive KernelCheckResult where
 | success
@@ -112,11 +116,11 @@ check that `expr` has type `type`
 def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckOutput) := do
   let expr := deserializeExpr expr
   let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
-    IO.println s!"Got expr: {repr expr}"
-    if expr.containsConstantNames bannedNames then
+    let bannedNames := (expr.collectNames bannedNames).Dedup
+    if !bannedNames.isEmpty then
       return {
         success := false,
-        error := some "Contains banned constant name"
+        error := some s!"Contains banned constant names: {bannedNames}"
       }
     else
       try

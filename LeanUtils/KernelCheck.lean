@@ -22,15 +22,16 @@ set_option trace.Elab.debug true
 
 
 def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
-
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
   let stx := (Parser.runParserCategory (← getEnv) `term code).toOption.get!
   -- elaborate it into an expression
   withoutErrToSorry do
-    let expr ← elabTermAndSynthesize stx (some type)
-    Lean.instantiateMVars expr
+    -- Just running 'elabTerm' is not enough, since we may have a 'by' term,
+    -- which requires us to run tactics (which is done by elabTermAndSynthesize)
+    -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
+    elabTermAndSynthesize stx (some type)
 
 partial def Lean.Expr.all (e : Expr) (p : Expr → Bool) : Bool :=
   if !p e then false else

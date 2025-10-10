@@ -133,10 +133,6 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
         }
   return res
 
-
-
-theorem foo: True := True.intro
-
 def parseAndCheck (args : List String): IO KernelCheckOutput := do
   if let [path, rawSorry, rawExpr] := args then
     unsafe enableInitializersExecution

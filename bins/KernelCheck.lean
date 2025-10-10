@@ -11,21 +11,52 @@ structure SerializedExpr where
 def serializeExpr (expr: Expr): SerializedExpr := { expr := expr }
 def deserializeExpr (expr: SerializedExpr): Expr := expr.expr
 
-def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
+
+structure TargetEnvData where
+  ctx: ContextInfo
+  theoremVal: TheoremVal
+  type: Expr
+  goal : Option MVarId
+
+
+def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := do
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
-  let stx := (Parser.runParserCategory (← getEnv) `term code)
-  let stx ← match stx with
-  | .ok stx => pure stx
-  | .error msg => throwError msg
 
-  -- elaborate it into an expression
-  withoutErrToSorry do
-    -- Just running 'elabTerm' is not enough, since we may have a 'by' term,
-    -- which requires us to run tactics (which is done by elabTermAndSynthesize)
-    -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
-    elabTermAndSynthesize stx (some type)
+
+
+  -- https://github.com/dwrensha/tryAtEachStep/blob/6c5d6d5913ab7cdf24a512c42211dc552d279519/tryAtEachStep.lean#L328
+  if let some goal := data.goal then
+
+    let inputCtx := Parser.mkInputContext code "<argument>"
+    let tokens := Parser.Module.updateTokens (Parser.getTokenTable data.ctx.env)
+    let s := Parser.tacticParser.fn.run
+                inputCtx {env := data.ctx.env, options := {}} tokens (Parser.mkParserState inputCtx.input)
+
+    let stx ← match s.errorMsg with
+    | some errorMsg =>
+      IO.eprintln s!"failed to parse {code}: {errorMsg}"
+      panic! "parse error"
+    | none =>
+      pure (if s.stxStack.isEmpty then .missing else s.stxStack.back)
+
+    let results ← Tactic.run goal (Tactic.evalTactic stx)
+    if !results.isEmpty then
+      throwError s!"Tactic produced subgoals: {repr results}"
+    else
+      panic "Done"
+  else
+    let stx := (Parser.runParserCategory (← getEnv) `term code)
+    let stx ← match stx with
+    | .ok stx => pure stx
+    | .error msg => throwError msg
+    -- elaborate it into an expression
+    withoutErrToSorry do
+      -- Just running 'elabTerm' is not enough, since we may have a 'by' term,
+      -- which requires us to run tactics (which is done by elabTermAndSynthesize)
+      -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
+      elabTermAndSynthesize stx (some data.type)
 
 /-
   Find all constant names in `e` that occur in `names` list
@@ -48,11 +79,6 @@ inductive KernelCheckResult where
 deriving Repr
 
 
-structure TargetEnvData where
-  ctx: ContextInfo
-  theoremVal: TheoremVal
-  type: Expr
-
 
 
 def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEnvData) := do
@@ -63,16 +89,18 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
     -- TODO - deduplicate this
     | .ofTermInfo ti =>
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTerm ti.stx then do
-        if let some type := ti.expectedType? then
-          return head ++ ([(ctx, some (type), none)])
-        else
-          return head ++ [(ctx, none, none)]
+        return head
+        -- if let some type := ti.expectedType? then
+        --   return head ++ ([(ctx, some (type), none)])
+        -- else
+        --   return head ++ [(ctx, none, none)]
       else
         return head
     | .ofTacticInfo ti =>
       -- TODO - do we need the 'mctxBefore' stuff from 'visitSorryNode'?
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
+        IO.println s!"Got goal: {repr goal}"
         return head ++ ([(ctx, none, some goal)])
       else
         return head
@@ -87,10 +115,10 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
         match oldDecl with
         | .thmInfo info =>
           match (type, goal) with
-          | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type} : TargetEnvData)]
+          | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type, goal := none} : TargetEnvData)]
           | (none, some goal) =>
               let goalType ← goal.getType
-              return [({ctx := ctx, theoremVal := info, type := goalType} : TargetEnvData)]
+              return [({ctx := ctx, theoremVal := info, type := goalType, goal := some goal} : TargetEnvData)]
           | _ => throwError "Bad case"
         | _ => throwError "Bad decl type"
       else
@@ -171,7 +199,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
     singleData.ctx.runMetaM {} do
       let mut elabedExpr := none
       try
-        let a ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
+        let a ← TermElabM.run (elabStringAsExpr rawExpr singleData)
         elabedExpr := some a.fst
       catch e =>
         return {

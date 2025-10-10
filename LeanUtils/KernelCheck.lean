@@ -61,7 +61,7 @@ structure TargetEnvData where
 def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEnvData) := do
   -- TODO - explain why an empty LocalContext is okay. Maybe - local context occurs within TermElabM - we're at top-level decl, so no local context
   let a ←  (do (tree.visitM (m := IO) (postNode := fun ctx i _ as => do
-    let head := (as.flatMap Option.toList).flatten
+    let head := (as.flatMap' Option.toList).flatten'
     match i with
     -- TODO - deduplicate this
     | .ofTermInfo ti =>
@@ -99,7 +99,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
       else
         throwError ("Missing parentDecl in environment")
   ))
-  let allTargets := targetDatas.flatten.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
+  let allTargets := targetDatas.flatten'.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
   return allTargets
 
 
@@ -155,7 +155,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
 
     let targetEnvs ← trees.mapM (fun t => findTargetEnv t firstSorry)
 
-    let targetEnvs := targetEnvs.flatten
+    let targetEnvs := targetEnvs.flatten'
     -- We might have both term-mode and tactic-mode info trees for the same source-level 'sorry'
     -- (since the 'sorry' tactic will end up emitting a 'sorry' term)
     -- We just pick the first one - as long as they all have the same type (which we check),

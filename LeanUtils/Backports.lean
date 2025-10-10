@@ -9,3 +9,6 @@ def List.flatten' {α : Type} : List (List α) → List α
 def Lean.Elab.InfoTree.collectNodesBottomUpM' [Monad m]
     (p : ContextInfo → Info → PersistentArray InfoTree → List α → m (List α)) (i : InfoTree) : m (List α) :=
   (·.getD []) <$> i.visitM (m := m) (postNode := fun ci i cs as => do p ci i cs (as.filterMap id).flatten')
+
+-- From Lean core, for backward compatibility with old Lean versions
+@[inline] def List.flatMap' {α : Type} {β : Type} (b : α → List β) (as : List α) : List β := List.flatten' (List.map b as)

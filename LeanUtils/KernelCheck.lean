@@ -30,22 +30,17 @@ def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
     -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
     elabTermAndSynthesize stx (some type)
 
-partial def Lean.Expr.all (e : Expr) (p : Expr → Bool) : Bool :=
-  if !p e then false else
+partial def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
+  let go a := Lean.Expr.containsConstantNames a names
   match e with
-  | .app f a        => f.all p && a.all p
-  | .lam _ ty bd _  => ty.all p && bd.all p
-  | .forallE _ ty bd _ => ty.all p && bd.all p
-  | .letE _ ty val bd _ => ty.all p && val.all p && bd.all p
-  | .mdata _ b      => b.all p
-  | .proj _ _ b     => b.all p
-  | _               => false
-
-def Lean.Expr.containsConstantNames (e : Expr) (names : List Name) : Bool :=
-  e.all (fun x => match x with
-    | .const x _ => x ∈ names
-    | .mvar _ => false
-    | _ => true)
+  | .const name _ => name ∈ names
+  | .app f a        => go f || go a
+  | .lam _ ty bd _  => go ty|| go bd
+  | .forallE _ ty bd _ => go ty || go bd
+  | .letE _ ty val bd _ => go ty || go val || go bd
+  | .mdata _ b      => go b
+  | .proj _ _ b     => go b
+  | _ => false
 
 inductive KernelCheckResult where
 | success
@@ -118,6 +113,7 @@ check that `expr` has type `type`
 def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckOutput) := do
   let expr := deserializeExpr expr
   let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
+    IO.println s!"Got expr: {repr expr}"
     if expr.containsConstantNames bannedNames then
       return {
         success := false,
@@ -176,7 +172,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
           error := some s!"Elaboration error: {(← e.toMessageData.format).pretty}"
         }
 
-      kernelCheck path singleData (serializeExpr elabedExpr.get!) singleData.type fileMap [`sorry]
+      kernelCheck path singleData (serializeExpr elabedExpr.get!) singleData.type fileMap [`sorryAx]
   else
     return {
       success := false,

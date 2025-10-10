@@ -9,8 +9,6 @@ structure SorryData (Out : Type) where
   parentDecl : Name
 deriving BEq
 
--- #check ContextInfo
-
 /-- Visit a node in the info tree and apply function `x` if the node
 is a tactic info or term info. -/
 def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)

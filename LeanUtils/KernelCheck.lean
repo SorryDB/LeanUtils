@@ -106,7 +106,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
           | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type} : TargetEnvData)]
           | (none, some goal) =>
               let goalType ← goal.getType
-              IO.println s!"Goal type: {goalType}"
+              IO.eprintln s!"Goal type: {goalType}"
               return [({ctx := ctx, theoremVal := info, type := goalType} : TargetEnvData)]
           | _ => throwError "Bad case"
         | _ => throwError "Bad decl type"
@@ -163,7 +163,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
     let projectSearchPath ← getProjectSearchPath path
     searchPathRef.set projectSearchPath
     let out := (← parseFile path)
-    IO.println s!"Found sorry: {out}"
+    IO.eprintln s!"Found sorry: {out}"
     -- TODO - take sorry coordinates on command line, find first one matching
     let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
 

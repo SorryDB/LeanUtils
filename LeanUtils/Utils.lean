@@ -9,22 +9,6 @@ structure SorryData (Out : Type) where
   parentDecl : Name
 deriving BEq
 
-def printNode (node: Info): String := match node with
-  | Info.ofTacticInfo (i : TacticInfo) => "Tactic"
-  | Info.ofTermInfo (i : TermInfo) => "Term"
-  | Info.ofPartialTermInfo (i : PartialTermInfo) => "PartialTerm"
-  | Info.ofCommandInfo (i : CommandInfo) => "Command"
-  | Info.ofMacroExpansionInfo (i : MacroExpansionInfo) => "MacroExpansion"
-  | Info.ofOptionInfo (i : OptionInfo) => "OptionInfo"
-  | Info.ofFieldInfo (i : FieldInfo)=> "FieldInfo"
-  | Info.ofCompletionInfo (i : CompletionInfo) => "CompletionInfo"
-  | Info.ofUserWidgetInfo (i : UserWidgetInfo) => "UserWidget"
-  | Info.ofCustomInfo (i : CustomInfo) => "CustomInfo"
-  | Info.ofFVarAliasInfo (i : FVarAliasInfo) => "FVarAlias"
-  | Info.ofFieldRedeclInfo (i : FieldRedeclInfo) => "FiledReDecl"
-  | Info.ofDelabTermInfo (i : DelabTermInfo) => "DelabTerm"
-  | Info.ofChoiceInfo (i : ChoiceInfo) => "ChoiceInfo"
-
 -- #check ContextInfo
 
 def isSorryTactic (stx: Syntax): Bool := match stx with
@@ -42,7 +26,6 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     (x : MVarId → MetaM (Option Out)) : IO (Option <| SorryData Out) := do
 
 
-  --IO.println s!"Inspecting {printNode node} with syntax: {node.stx}"
 
   match node with
   | .ofTacticInfo i =>

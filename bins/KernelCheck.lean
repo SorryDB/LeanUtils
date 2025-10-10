@@ -138,19 +138,30 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
 theorem foo: True := True.intro
 
 def parseAndCheck (args : List String): IO KernelCheckOutput := do
-  if let [path, rawExpr] := args then
+  if let [path, rawSorry, rawExpr] := args then
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path
     let projectSearchPath ← getProjectSearchPath path
     searchPathRef.set projectSearchPath
-    let out := (← parseFile path)
-    -- TODO - take sorry coordinates on command line, find first one matching
-    let [firstSorry] := out | throw (IO.userError "Expected exactly one sorry")
+    let a := Json.parse rawSorry
+    let json ← match a with
+      | .ok json => pure json
+      | .error e => return {
+        success := false,
+        error := some s!"Failed to parse input as valid JSON {e}"
+      }
+
+    let parsedSorry: ParsedSorry ← match (Lean.FromJson.fromJson? json) with
+    | .ok parsedSorry => pure parsedSorry
+    | .error e => return {
+      success := false
+      error := some s!"Failed to deserialize ParsedSorry: {e}"
+    }
 
     let (fileMap, trees) ← extractInfoTrees path
 
-    let targetEnvs ← trees.mapM (fun t => findTargetEnv t firstSorry)
+    let targetEnvs ← trees.mapM (fun t => findTargetEnv t parsedSorry)
 
     let targetEnvs := targetEnvs.flatten'
     -- We might have both term-mode and tactic-mode info trees for the same source-level 'sorry'
@@ -176,7 +187,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
   else
     return {
       success := false,
-      error := some "Requires a path and expr string"
+      error := some "Requires a path, sorry, and expr string"
     }
 
 def main (args : List String) : IO UInt32  := do

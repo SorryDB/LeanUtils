@@ -50,7 +50,7 @@ structure ParsedSorry where
   pos : Position
   parentDecl : Name
   hash : UInt64
-deriving ToJson, DecidableEq
+deriving FromJson, ToJson, DecidableEq
 
 def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) : SorryData Out → ParsedSorry :=
   fun ⟨out, stx, parentDecl⟩ =>

@@ -17,9 +17,11 @@ structure TargetEnvData where
   theoremVal: TheoremVal
   type: Expr
   goal : Option MVarId
+  mctx : Option MetavarContext
 
 
 def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := do
+  withMCtx data.mctx.get! do
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
@@ -31,6 +33,7 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
 
     let inputCtx := Parser.mkInputContext code "<argument>"
     let tokens := Parser.Module.updateTokens (Parser.getTokenTable data.ctx.env)
+    IO.eprintln s!"Got tokens: {inputCtx.input}"
     let s := Parser.tacticParser.fn.run
                 inputCtx {env := data.ctx.env, options := {}} tokens (Parser.mkParserState inputCtx.input)
 
@@ -45,7 +48,7 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
     if !results.isEmpty then
       throwError s!"Tactic produced subgoals: {repr results}"
     else
-      panic "Done"
+      pure (Expr.mvar goal)
   else
     let stx := (Parser.runParserCategory (← getEnv) `term code)
     let stx ← match stx with
@@ -101,7 +104,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
       if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         IO.println s!"Got goal: {repr goal}"
-        return head ++ ([(ctx, none, some goal)])
+        return head ++ ([(ctx, none, some goal, some ti.mctxBefore)])
       else
         return head
     | _ => return head
@@ -109,16 +112,16 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
   )))
 
   let matchedCtxs := a.get!
-  let targetDatas ← (matchedCtxs.mapM (fun (ctx, type, goal) => do
+  let targetDatas ← (matchedCtxs.mapM (fun (ctx, type, goal, mctx) => do
     ctx.runMetaM {} do
       if let some oldDecl :=  ctx.env.find? targetSorry.parentDecl then
         match oldDecl with
         | .thmInfo info =>
-          match (type, goal) with
-          | (some type, none) => return [({ctx := ctx, theoremVal := info, type := type, goal := none} : TargetEnvData)]
-          | (none, some goal) =>
+          match (type, goal, mctx) with
+          | (some type, none, mctx) => return [({ctx := ctx, theoremVal := info, type := type, goal := none, mctx := mctx} : TargetEnvData)]
+          | (none, some goal, mctx) =>
               let goalType ← goal.getType
-              return [({ctx := ctx, theoremVal := info, type := goalType, goal := some goal} : TargetEnvData)]
+              return [({ctx := ctx, theoremVal := info, type := goalType, goal := some goal, mctx := mctx} : TargetEnvData)]
           | _ => throwError "Bad case"
         | _ => throwError "Bad decl type"
       else
@@ -197,6 +200,7 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
       throw (IO.userError "Found different types for infotrees corresponding to same sorry")
 
     singleData.ctx.runMetaM {} do
+      --setEnv singleData.ctx.env
       let mut elabedExpr := none
       try
         let a ← TermElabM.run (elabStringAsExpr rawExpr singleData)

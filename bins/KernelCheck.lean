@@ -29,7 +29,7 @@ structure TargetEnvData where
   mctx : Option MetavarContext
 
 
-def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := do
+def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM (Expr × Expr) := do
   setEnv data.ctx.env
   withMCtx data.mctx.get! do
 
@@ -71,9 +71,11 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
       let fvars := hyps.map (fun d => Expr.fvar d.fvarId)
       --let fvars :=  ((lctx.decls.toArray.toList.flatMap (Option.toList))).map (fun d => Expr.fvar d.fvarId)
       --IO.eprintln s!"Fvars:"
-      let newTerm ← Lean.Meta.mkForallFVars fvars expr
+      let newTerm ← Lean.Meta.mkLambdaFVars fvars expr
+      let newType ← Lean.Meta.mkForallFVars fvars data.type
       IO.eprintln s!"New term: {newTerm}"
-      pure expr
+      IO.eprintln s!"New type: {newType}"
+      pure (newTerm, newType)
 
   else
     let stx := (Parser.runParserCategory (← getEnv) `term code)
@@ -85,7 +87,7 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
       -- Just running 'elabTerm' is not enough, since we may have a 'by' term,
       -- which requires us to run tactics (which is done by elabTermAndSynthesize)
       -- See also: https://github.com/leanprover-community/mathlib4/wiki/Metaprogramming-gotchas#forgetting-to-complete-elaboration-by-synthesizing-pending-synthetic-metavariables
-      elabTermAndSynthesize stx (some data.type)
+      pure  (← elabTermAndSynthesize stx (some data.type), data.type)
 
 /-
   Find all constant names in `e` that occur in `names` list
@@ -183,7 +185,7 @@ def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (ex
         }
       catch e =>
         return {
-          success := true,
+          success := false,
           error := ← e.toMessageData.toString
         }
   return res
@@ -238,17 +240,20 @@ def parseAndCheck (args : List String): IO KernelCheckOutput := do
 
     singleData.ctx.runMetaM lctx do
       --setEnv singleData.ctx.env
-      let mut elabedExpr := none
+      let mut elabedExprAndType := none
       try
-        let a ← TermElabM.run (elabStringAsExpr rawExpr singleData)
-        elabedExpr := some a.fst
+        let res← TermElabM.run (elabStringAsExpr rawExpr singleData)
+        elabedExprAndType := some res
       catch e =>
         return {
           success := false,
           error := some s!"Elaboration error: {(← e.toMessageData.format).pretty}"
         }
 
-      kernelCheck path singleData (serializeExpr elabedExpr.get!) singleData.type fileMap [`sorryAx]
+      let ((newExpr, newType), _):= elabedExprAndType.get!
+      IO.println s!"NewExpr: {newExpr}"
+      IO.println s!"NewType: {newType}"
+      kernelCheck path singleData (serializeExpr newExpr) newType fileMap [`sorryAx]
   else
     return {
       success := false,

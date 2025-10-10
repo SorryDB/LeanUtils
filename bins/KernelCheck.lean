@@ -12,6 +12,15 @@ def serializeExpr (expr: Expr): SerializedExpr := { expr := expr }
 def deserializeExpr (expr: SerializedExpr): Expr := expr.expr
 
 
+
+
+def extractHypsFromGoal (mvarId : MVarId) : MetaM (Array LocalDecl) := do
+  mvarId.withContext do
+    pure <| (← getLCtx).foldl (init := #[]) fun acc decl =>
+      if decl.isAuxDecl || decl.isImplementationDetail then acc else acc.push decl
+
+
+
 structure TargetEnvData where
   ctx: ContextInfo
   theoremVal: TheoremVal
@@ -35,6 +44,9 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
   -- https://github.com/dwrensha/tryAtEachStep/blob/6c5d6d5913ab7cdf24a512c42211dc552d279519/tryAtEachStep.lean#L328
   if let some goal := data.goal then
 
+    let lctx ← getLCtx
+
+
     let inputCtx := Parser.mkInputContext code "<argument>"
     let tokens := Parser.Module.updateTokens (Parser.getTokenTable data.ctx.env)
     IO.eprintln s!"Got new tokens: {inputCtx.input}"
@@ -54,6 +66,13 @@ def elabStringAsExpr (code : String) (data : TargetEnvData) : TermElabM Expr := 
     else
       let expr ← Lean.instantiateMVars (Expr.mvar goal)
       IO.eprintln s!"Expr: {expr}"
+
+      let hyps ← extractHypsFromGoal goal
+      let fvars := hyps.map (fun d => Expr.fvar d.fvarId)
+      --let fvars :=  ((lctx.decls.toArray.toList.flatMap (Option.toList))).map (fun d => Expr.fvar d.fvarId)
+      --IO.eprintln s!"Fvars:"
+      let newTerm ← Lean.Meta.mkForallFVars fvars expr
+      IO.eprintln s!"New term: {newTerm}"
       pure expr
 
   else
@@ -87,8 +106,6 @@ inductive KernelCheckResult where
 | success
 | error (e: String)
 deriving Repr
-
-
 
 
 def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEnvData) := do

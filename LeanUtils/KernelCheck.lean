@@ -116,28 +116,46 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
   let allTargets := targetDatas.flatten.filter (fun data => data.ctx.parentDecl? == (some targetSorry.parentDecl))
   return allTargets
 
+
+structure KernelCheckOutput where
+  success: Bool
+  error: Option String
+deriving ToJson
+
 /-
 check that `expr` has type `type`
 -/
 -- TODO - change the error type to make it harder to accidentally return success
 -- remove the 'panics'
-def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckResult) := do
+def kernelCheck (sorryFilePath: System.FilePath) (targetData: TargetEnvData) (expr : SerializedExpr) (type: Expr) (fileMap: FileMap) (bannedNames : List Name) : IO (KernelCheckOutput) := do
   let expr := deserializeExpr expr
   let (res, _) ← Core.CoreM.toIO (ctx := {fileName := sorryFilePath.fileName.get!, fileMap := fileMap}) (s := { env := targetData.ctx.env }) do
     if expr.containsConstantNames bannedNames then
-      return (KernelCheckResult.error "contains banned constant name.")
+      return {
+        success := false,
+        error := some "Contains banned constant name"
+      }
     else
       try
         addDecl (Declaration.thmDecl {targetData.theoremVal with value := expr, type := type, name := ← mkFreshId})
-        return (KernelCheckResult.success)
+        return {
+          success := true,
+          error := none
+        }
       catch e =>
-        return (KernelCheckResult.error (← e.toMessageData.toString))
-
+        return {
+          success := true,
+          error := ← e.toMessageData.toString
+        }
   return res
+
+
 
 theorem foo: True := True.intro
 
-def main (args : List String) : IO UInt32  := do
+
+#check Exception
+def parseAndCheck (args : List String): IO KernelCheckOutput := do
   if let [path, rawExpr] := args then
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
@@ -162,13 +180,25 @@ def main (args : List String) : IO UInt32  := do
     if !targetEnvs.all (fun d => d.type == singleData.type) then
       throw (IO.userError "Found different types for infotrees corresponding to same sorry")
 
-
     singleData.ctx.runMetaM {} do
-      let (elabedExpr, _) ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
-      IO.println s!"Elabed expr: {elabedExpr} type: {← inferType elabedExpr}"
-      let res ←  kernelCheck path singleData (serializeExpr elabedExpr) singleData.type fileMap [`sorry]
-      IO.println s!"Kernel check: {repr res}"
+      let mut elabedExpr := none
+      try
+        let a ← TermElabM.run (elabStringAsExpr rawExpr singleData.type)
+        elabedExpr := some a.fst
+      catch e =>
+        return {
+          success := false,
+          error := some s!"Elaboration error: {(← e.toMessageData.format).pretty}"
+        }
 
+      kernelCheck path singleData (serializeExpr elabedExpr.get!) singleData.type fileMap [`sorry]
   else
-    throw (IO.userError "Requires a path and expr string")
+    return {
+      success := false,
+      error := some "Requires a path and expr string"
+    }
+
+def main (args : List String) : IO UInt32  := do
+  let res ← parseAndCheck args
+  IO.println (toJson res)
   return 0

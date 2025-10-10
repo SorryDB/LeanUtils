@@ -25,7 +25,11 @@ def elabStringAsExpr (code : String) (type : Expr) : TermElabM Expr := do
   -- let a := trace.Elab.debug.set · true
   -- withOptions (trace.Elab.debug.set · true) <| do
   -- parse the string as a syntax tree
-  let stx := (Parser.runParserCategory (← getEnv) `term code).toOption.get!
+  let stx := (Parser.runParserCategory (← getEnv) `term code)
+  let stx ← match stx with
+  | .ok stx => pure stx
+  | .error msg => throwError msg
+
   -- elaborate it into an expression
   withoutErrToSorry do
     -- Just running 'elabTerm' is not enough, since we may have a 'by' term,

@@ -9,24 +9,21 @@ structure SorryData (Out : Type) where
   parentDecl : Name
 deriving BEq
 
--- #check ContextInfo
+def isSorryTactic (stx: Syntax) : Bool :=
+  match stx with
+  | `(tactic| sorry)
+  | `(tactic| admit) => true
+  | _ => false
 
-def isSorryTactic (stx: Syntax): Bool := match stx with
-| `(tactic| sorry)
-| `(tactic| admit)  => true
-| _ => false
-
-def isSorryTerm (stx: Syntax): Bool := match stx with
-| `(term| sorry) => true
-| _ => false
+def isSorryTerm (stx: Syntax) : Bool :=
+  match stx with
+  | `(term| sorry) => true
+  | _ => false
 
 /-- Visit a node in the info tree and apply function `x` if the node
 is a tactic info or term info. -/
 def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     (x : MVarId → MetaM (Option Out)) : IO (Option <| SorryData Out) := do
-
-
-
   match node with
   | .ofTacticInfo i =>
     if isSorryTactic i.stx then

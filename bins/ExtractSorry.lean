@@ -17,7 +17,6 @@ def main (args : List String) : IO Unit := do
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path
-    searchPathRef.set compile_time_search_path%
     let out := (← parseFile path).map ToJson.toJson
     IO.eprintln s!"File extraction yielded"
     IO.eprintln (toJson out)

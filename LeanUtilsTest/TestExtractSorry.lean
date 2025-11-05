@@ -1,4 +1,4 @@
-import LeanUtils.ExtractSorry
+import bins.ExtractSorry
 
 /--
 info: Running sorry extraction.

@@ -15,7 +15,8 @@ only have to run them once per project, rather than once per Lean file.
 def main (args : List String) : IO Unit := do
   logRun
   if let some path := args[0]? then
-    IO.println "Running sorry extraction."
+    IO.println s!"Running sorry extraction on file {path}."
+    IO.println s!"Absolute path to this file is {← IO.FS.realPath ⟨path⟩}"
     unsafe enableInitializersExecution
     let path : System.FilePath := { toString := path }
     let path ← IO.FS.realPath path

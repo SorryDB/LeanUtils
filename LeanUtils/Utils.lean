@@ -56,20 +56,26 @@ def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) : SorryData
 instance : ToString ParsedSorry where
   toString a := ToString.toString <| ToJson.toJson a
 
+#check Frontend.State
 
 /-- `extractInfoTree myLeanFile` takes as input the path to a Lean file and outputs
 the infotrees of the file, together with the `FileMap`. -/
-def extractInfoTrees (fileName : System.FilePath) : IO ( FileMap × List InfoTree) := do
+def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree) := do
   let input ← IO.FS.readFile fileName
   let inputCtx := Parser.mkInputContext input fileName.toString
   let (header, parserState, messages) ← Parser.parseHeader inputCtx
+  if Lean.MessageLog.hasErrors messages then
+    IO.println s!"Ran into errors while parsing the header of {fileName}"
   -- TODO: do we need to specify the main module here?
   let (env, messages) ← processHeader header {} messages inputCtx
+  if Lean.MessageLog.hasErrors messages then
+    IO.println s!"Ran into errors whist processing the header of {fileName}"
   let commandState := Command.mkState env messages
-  let s ← IO.processCommands inputCtx parserState commandState
+  let frontendState ← IO.processCommands inputCtx parserState commandState
+  if Lean.MessageLog.hasErrors frontendState.commandState.messages then
+    IO.println s!"Ran into errors whist processing the commands in {fileName}"
   let fileMap := FileMap.ofString input
-  return (fileMap, s.commandState.infoState.trees.toList)
-
+  return (fileMap, frontendState.commandState.infoState.trees.toList)
 
 /-
 Note: we may want to implememt the following functions in Python in order to

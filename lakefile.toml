@@ -11,4 +11,4 @@ root = "bins.KernelCheck"
 
 [[lean_exe]]
 name = "ExtractSorry"
-root = "bins.KernelCheck"
+root = "bins.ExtractSorry"

@@ -14,7 +14,6 @@ def ppGoalIfNoMVar (mvar : MVarId) : MetaM (Option Format) := do
   catch _ =>
     return none
 
-
 /-- Traverses an info tree and applies `x` on the type of each sorry,
 while iteratively reconstructing the MetaM context.
 
@@ -37,9 +36,10 @@ where
 def extractSorries (T : InfoTree) : IO (List <| SorryData Format) :=
   traverseInfoTree ppGoalIfNoMVar T
 
-
 /-- `parseFile myLeanFile` extracts the sorries contained in the Lean file `myLeanFile`. -/
 def parseFile (path : System.FilePath) : IO (List ParsedSorry) := do
+  -- Throw an error if the oleans of the file can't be found...
+  path.checkOLeans
   let (fileMap, trees) ← extractInfoTrees path
   -- TODO(Paul-Lez): here ideally we should filter `trees` so we only run
   -- `extractSorries` on infotrees that arise from theorems/lemmas/definitions/...

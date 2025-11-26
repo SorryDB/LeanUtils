@@ -56,7 +56,11 @@ def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) : SorryData
 instance : ToString ParsedSorry where
   toString a := ToString.toString <| ToJson.toJson a
 
-#check Frontend.State
+def Lean.Message.printIfError (m : Message) : IO Unit := do
+  if m.severity == .error then IO.eprintln <| ← m.toString
+
+def Lean.MessageLog.printErrors (m : MessageLog) : IO Unit := do
+  for message in m.reported ++ m.unreported do message.printIfError
 
 /-- `extractInfoTree myLeanFile` takes as input the path to a Lean file and outputs
 the infotrees of the file, together with the `FileMap`. -/
@@ -65,15 +69,18 @@ def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree
   let inputCtx := Parser.mkInputContext input fileName.toString
   let (header, parserState, messages) ← Parser.parseHeader inputCtx
   if Lean.MessageLog.hasErrors messages then
-    IO.println s!"Ran into errors while parsing the header of {fileName}"
+    IO.eprintln s!"Ran into errors while parsing the header of {fileName}"
+    MessageLog.printErrors messages
   -- TODO: do we need to specify the main module here?
   let (env, messages) ← processHeader header {} messages inputCtx
   if Lean.MessageLog.hasErrors messages then
-    IO.println s!"Ran into errors whist processing the header of {fileName}"
+    IO.eprintln s!"Ran into errors whist processing the header of {fileName}"
+    MessageLog.printErrors messages
   let commandState := Command.mkState env messages
   let frontendState ← IO.processCommands inputCtx parserState commandState
   if Lean.MessageLog.hasErrors frontendState.commandState.messages then
-    IO.println s!"Ran into errors whist processing the commands in {fileName}"
+    IO.eprintln s!"Ran into errors whist processing the commands in {fileName}"
+    MessageLog.printErrors messages
   let fileMap := FileMap.ofString input
   return (fileMap, frontendState.commandState.infoState.trees.toList)
 
@@ -117,3 +124,6 @@ def getProjectSearchPath (path : System.FilePath) : IO (System.SearchPath) := do
   let paths ← getAllLakePaths rootDir
   let originalSearchPath ← getBuiltinSearchPath (← findSysroot)
   return originalSearchPath.append paths.toList
+
+def System.FilePath.checkOLeans (path : System.FilePath) : IO Unit := do
+  discard <| Lean.findOLean (← moduleNameOfFileName path none)

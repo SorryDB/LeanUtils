@@ -43,15 +43,36 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
   | _ => return none
 
 structure ParsedSorry where
-  statement : String
-  pos : Position
+  goal : String
+  startPos : Position
+  endPos : Position
   parentDecl : Name
   hash : UInt64
-deriving FromJson, ToJson, DecidableEq
+deriving DecidableEq, FromJson
 
-def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) : SorryData Out → ParsedSorry :=
+instance : ToJson ParsedSorry where
+  toJson ps := Json.mkObj [
+    ("goal", Json.str ps.goal),
+    ("location", Json.mkObj [
+      ("start_line", Json.num ps.startPos.line),
+      ("start_column", Json.num ps.startPos.column),
+      ("end_line", Json.num ps.endPos.line),
+      ("end_column", Json.num ps.endPos.column)
+    ]),
+    ("parentDecl", Json.str ps.parentDecl.toString),
+    ("hash", Json.num ps.hash.toNat)
+  ]
+
+def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
+    SorryData Out → ParsedSorry :=
   fun ⟨out, stx, parentDecl⟩ =>
-    ⟨ToString.toString out, fileMap.toPosition stx.getPos?.get!, parentDecl, Hashable.hash <| ToString.toString out⟩
+    {
+      goal := ToString.toString out
+      startPos := fileMap.toPosition stx.getPos?.get!
+      endPos := fileMap.toPosition stx.getTailPos?.get!
+      parentDecl
+      hash := Hashable.hash <| ToString.toString out
+    }
 
 instance : ToString ParsedSorry where
   toString a := ToString.toString <| ToJson.toJson a

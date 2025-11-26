@@ -49,7 +49,8 @@ structure Location where
   start_column : Nat
 deriving FromJson, ToJson, DecidableEq
 
-def Lean.Position.toLocation : Position → Location := fun pos ↦ ⟨pos.line, pos.column⟩
+def Lean.Position.toLocation : Position → Location :=
+  fun pos ↦ ⟨pos.line, pos.column⟩
 
 structure ParsedSorry where
   goal : String

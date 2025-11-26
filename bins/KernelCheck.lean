@@ -62,7 +62,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
     match i with
     -- TODO - deduplicate this
     | .ofTermInfo ti =>
-      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTerm ti.stx then do
+      if targetSorry.location == (ctx.fileMap.toPosition ti.stx.getPos?.get!).toLocation && isSorryTerm ti.stx then do
         if let some type := ti.expectedType? then
           return head ++ ([(ctx, some (type), none)])
         else
@@ -71,7 +71,7 @@ def findTargetEnv (tree: InfoTree) (targetSorry: ParsedSorry): IO (List TargetEn
         return head
     | .ofTacticInfo ti =>
       -- TODO - do we need the 'mctxBefore' stuff from 'visitSorryNode'?
-      if targetSorry.pos == ctx.fileMap.toPosition ti.stx.getPos?.get! && isSorryTactic ti.stx then do
+      if targetSorry.location == (ctx.fileMap.toPosition ti.stx.getPos?.get! |>.toLocation) && isSorryTactic ti.stx then do
         let goal ← if let [goal] := ti.goalsBefore then pure goal else (throw (IO.userError "Found more than one goal"))
         return head ++ ([(ctx, none, some goal)])
       else

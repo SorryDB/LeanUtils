@@ -42,27 +42,51 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     else return none
   | _ => return none
 
-/-- This is a hack to get the right constructor names (to match those we get
-from using a REPL based sorry extraction). -/
-structure Location where
-  start_line : Nat
-  start_column : Nat
-deriving FromJson, ToJson, DecidableEq
+-- /-- This is a hack to get the right constructor names (to match those we get
+-- from using a REPL based sorry extraction). -/
+-- structure Location where
+--   start_line : Nat
+--   start_column : Nat
+--   end_line : Nat
+--   end_column : Nat
+-- deriving FromJson, ToJson, DecidableEq
 
-def Lean.Position.toLocation : Position → Location :=
-  fun pos ↦ ⟨pos.line, pos.column⟩
+-- #check Position
+
+-- def Lean.Position.toLocation : Position → Location :=
+--   fun pos ↦ ⟨pos.line, pos.column⟩
 
 structure ParsedSorry where
   goal : String
-  location : Location
+  startPos : Position
+  endPos : Position
   parentDecl : Name
   hash : UInt64
-deriving FromJson, ToJson, DecidableEq
+deriving DecidableEq, FromJson
+
+instance : ToJson ParsedSorry where
+  toJson ps := Json.mkObj [
+    ("goal", Json.str ps.goal),
+    ("location", Json.mkObj [
+      ("start_line", Json.num ps.startPos.line),
+      ("start_column", Json.num ps.startPos.column),
+      ("end_line", Json.num ps.endPos.line),
+      ("end_column", Json.num ps.endPos.column)
+    ]),
+    ("parentDecl", Json.str ps.parentDecl.toString),
+    ("hash", Json.num ps.hash.toNat)
+  ]
 
 def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
     SorryData Out → ParsedSorry :=
   fun ⟨out, stx, parentDecl⟩ =>
-    ⟨ToString.toString out, fileMap.toPosition stx.getPos?.get! |>.toLocation, parentDecl, Hashable.hash <| ToString.toString out⟩
+    {
+      goal := ToString.toString out
+      startPos := fileMap.toPosition stx.getPos?.get!
+      endPos := fileMap.toPosition stx.getTailPos?.get!
+      parentDecl
+      hash := Hashable.hash <| ToString.toString out
+    }
 
 instance : ToString ParsedSorry where
   toString a := ToString.toString <| ToJson.toJson a

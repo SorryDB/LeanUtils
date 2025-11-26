@@ -101,7 +101,7 @@ def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree
   let frontendState ← IO.processCommands inputCtx parserState commandState
   if Lean.MessageLog.hasErrors frontendState.commandState.messages then
     IO.eprintln s!"Ran into errors whist processing the commands in {fileName}"
-    MessageLog.printErrors messages
+    MessageLog.printErrors frontendState.commandState.messages
   let fileMap := FileMap.ofString input
   return (fileMap, frontendState.commandState.infoState.trees.toList)
 

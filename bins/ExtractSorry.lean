@@ -33,6 +33,6 @@ def main (args : List String) : IO Unit := do
     let path ← IO.FS.realPath path
     let out := (← parseFile path).map ToJson.toJson
     if verbose then IO.eprintln s!"File extraction yielded"
-    IO.eprintln (toJson out)
+    IO.println (toJson out)
   else
     IO.println "A path is needed."

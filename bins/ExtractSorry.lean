@@ -13,6 +13,7 @@ only have to run them once per project, rather than once per Lean file.
 -/
 
 def main (args : List String) : IO Unit := do
+  Lean.initSearchPath (← Lean.findSysroot)
   logRun
   if let some path := args[0]? then
     IO.println s!"Running sorry extraction on file {path}."

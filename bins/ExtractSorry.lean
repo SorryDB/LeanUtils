@@ -1,4 +1,5 @@
 import Lean
+import LeanUtils.Logging
 import LeanUtils.Utils
 import LeanUtils.Backports
 import LeanUtils.ExtractSorry
@@ -12,6 +13,7 @@ only have to run them once per project, rather than once per Lean file.
 -/
 
 def main (args : List String) : IO Unit := do
+  logRun
   if let some path := args[0]? then
     IO.println "Running sorry extraction."
     unsafe enableInitializersExecution

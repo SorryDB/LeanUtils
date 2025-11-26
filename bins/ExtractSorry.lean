@@ -25,11 +25,3 @@ def main (args : List String) : IO Unit := do
     IO.eprintln (toJson out)
   else
     IO.println "A path is needed."
-
-
-def test : IO Unit := do
-  discard <| IO.FS.readFile ⟨"this is a fake file"⟩
-  pure ()
-
-
-#eval test

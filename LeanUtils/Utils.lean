@@ -42,20 +42,6 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     else return none
   | _ => return none
 
--- /-- This is a hack to get the right constructor names (to match those we get
--- from using a REPL based sorry extraction). -/
--- structure Location where
---   start_line : Nat
---   start_column : Nat
---   end_line : Nat
---   end_column : Nat
--- deriving FromJson, ToJson, DecidableEq
-
--- #check Position
-
--- def Lean.Position.toLocation : Position → Location :=
---   fun pos ↦ ⟨pos.line, pos.column⟩
-
 structure ParsedSorry where
   goal : String
   startPos : Position
@@ -91,6 +77,12 @@ def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
 instance : ToString ParsedSorry where
   toString a := ToString.toString <| ToJson.toJson a
 
+def Lean.Message.printIfError (m : Message) : IO Unit := do
+  if m.severity == .error then IO.eprintln <| ← m.toString
+
+def Lean.MessageLog.printErrors (m : MessageLog) : IO Unit := do
+  for message in m.reported ++ m.unreported do message.printIfError
+
 /-- `extractInfoTree myLeanFile` takes as input the path to a Lean file and outputs
 the infotrees of the file, together with the `FileMap`. -/
 def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree) := do
@@ -99,14 +91,17 @@ def extractInfoTrees (fileName : System.FilePath) : IO (FileMap × List InfoTree
   let (header, parserState, messages) ← Parser.parseHeader inputCtx
   if Lean.MessageLog.hasErrors messages then
     IO.eprintln s!"Ran into errors while parsing the header of {fileName}"
+    MessageLog.printErrors messages
   -- TODO: do we need to specify the main module here?
   let (env, messages) ← processHeader header {} messages inputCtx
   if Lean.MessageLog.hasErrors messages then
     IO.eprintln s!"Ran into errors whist processing the header of {fileName}"
+    MessageLog.printErrors messages
   let commandState := Command.mkState env messages
   let frontendState ← IO.processCommands inputCtx parserState commandState
   if Lean.MessageLog.hasErrors frontendState.commandState.messages then
     IO.eprintln s!"Ran into errors whist processing the commands in {fileName}"
+    MessageLog.printErrors frontendState.commandState.messages
   let fileMap := FileMap.ofString input
   return (fileMap, frontendState.commandState.infoState.trees.toList)
 
@@ -150,3 +145,6 @@ def getProjectSearchPath (path : System.FilePath) : IO (System.SearchPath) := do
   let paths ← getAllLakePaths rootDir
   let originalSearchPath ← getBuiltinSearchPath (← findSysroot)
   return originalSearchPath.append paths.toList
+
+def System.FilePath.checkOLeans (path : System.FilePath) : IO Unit := do
+  discard <| Lean.findOLean (← moduleNameOfFileName path none)

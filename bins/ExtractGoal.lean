@@ -91,13 +91,29 @@ def mkThmHeader (name : Name) (g : MVarId) : TermElabM (MessageData) :=
 def getTheoremPosition (ci : ConstantVal) : MetaM (Option Position) := do
   return (← findDeclarationRanges? ci.name).map (·.range.pos)
 
-def extractGoal (args : List String): IO (Except String String) := do
-  if let [path, rawSorry] := args then
-    let (fileMap, singleData) ← match ← findSorryTargetFromFile path rawSorry with
-    | .ok x => pure x
-    | .error e => throw (IO.userError e)
+def Pp.applyOptions : Options → Options :=
+  (pp.proofs.set · false |>
+  (pp.motives.all.set · true |>
+  (pp.coercions.types.set · true |>
+  (pp.unicode.fun.set · true |>
+  (pp.funBinderTypes.set · true)))))
 
-    singleData.ctx.runMetaM {} do
+def extractGoal (args : List String): IO (Except String String) := do
+  let (path, rawSorry) ← match args with
+  | [path, rawSorry] => pure (path, rawSorry)
+  | [path] => do
+    -- Read from stdin
+    let stdin ← IO.getStdin
+    let rawSorry ← stdin.getLine
+    pure (path, rawSorry.trim)
+  | _ => throw (IO.userError "Requires a path and either a JSON argument or stdin")
+
+  let (fileMap, singleData) ← match ← findSorryTargetFromFile path rawSorry with
+  | .ok x => pure x
+  | .error e => throw (IO.userError e)
+
+  singleData.ctx.runMetaM {} do
+    MonadWithOptions.withOptions Pp.applyOptions do
       let g ← mkFreshExprMVar singleData.type
       let x ← Lean.Elab.Term.TermElabM.run' (mkThmHeader (← getFreshConstName `mytheorem) g.mvarId!)
       let «prefix» := match ← getTheoremPosition singleData.theoremVal.toConstantVal with
@@ -106,8 +122,6 @@ def extractGoal (args : List String): IO (Except String String) := do
           fileMap.source.extract 0 strPos
       | none => ""
       return .ok («prefix» ++ "\n" ++ "theorem " ++ (← x.toString) ++ " := sorry")
-  else
-    return .error "Requires a path, sorry"
 
 def main (args : List String) : IO UInt32  := do
   let res ← extractGoal args

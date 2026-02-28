@@ -48,20 +48,7 @@ structure ParsedSorry where
   endPos : Position
   parentDecl : Name
   hash : UInt64
-deriving DecidableEq, FromJson
-
-instance : ToJson ParsedSorry where
-  toJson ps := Json.mkObj [
-    ("goal", Json.str ps.goal),
-    ("location", Json.mkObj [
-      ("start_line", Json.num ps.startPos.line),
-      ("start_column", Json.num ps.startPos.column),
-      ("end_line", Json.num ps.endPos.line),
-      ("end_column", Json.num ps.endPos.column)
-    ]),
-    ("parentDecl", Json.str ps.parentDecl.toString),
-    ("hash", Json.num ps.hash.toNat)
-  ]
+deriving DecidableEq, FromJson, ToJson
 
 def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
     SorryData Out → ParsedSorry :=

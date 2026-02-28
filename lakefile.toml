@@ -1,6 +1,7 @@
 name = "LeanUtils"
 version = "0.1.0"
 defaultTargets = ["KernelCheck", "ExtractSorry"]
+testDriver = "LeanUtilsTest"
 
 [[lean_lib]]
 name = "LeanUtils"
@@ -12,3 +13,6 @@ root = "bins.KernelCheck"
 [[lean_exe]]
 name = "ExtractSorry"
 root = "bins.ExtractSorry"
+
+[[lean_lib]]
+name = "LeanUtilsTest"

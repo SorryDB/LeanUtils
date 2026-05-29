@@ -1,2 +1,0 @@
-import LeanUtilsTest.LeanFileWithSorries
-import LeanUtilsTest.TestExtractSorry

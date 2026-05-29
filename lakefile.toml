@@ -6,6 +6,9 @@ testDriver = "LeanUtilsTest"
 [[lean_lib]]
 name = "LeanUtils"
 
+[[lean_lib]]
+name = "bins"
+
 [[lean_exe]]
 name = "KernelCheck"
 root = "bins.KernelCheck"
@@ -14,5 +17,10 @@ root = "bins.KernelCheck"
 name = "ExtractSorry"
 root = "bins.ExtractSorry"
 
+[[lean_exe]]
+name = "ExtractGoal"
+root = "bins.ExtractGoal"
+
 [[lean_lib]]
 name = "LeanUtilsTest"
+globs = ["LeanUtilsTest.+"]

@@ -38,6 +38,9 @@ def extractSorries (T : InfoTree) : IO (List <| SorryData Format) :=
 
 /-- `parseFile myLeanFile` extracts the sorries contained in the Lean file `myLeanFile`. -/
 def parseFile (path : System.FilePath) : IO (List ParsedSorry) := do
+  unsafe enableInitializersExecution
+  let projectSearchPath ← getProjectSearchPath path
+  searchPathRef.set projectSearchPath
   -- Throw an error if the oleans of the file can't be found...
   path.checkOLeans
   let (fileMap, trees) ← extractInfoTrees path

@@ -119,7 +119,7 @@ def extractGoal (args : List String): IO (Except String String) := do
       let «prefix» := match ← getTheoremPosition singleData.theoremVal.toConstantVal with
       | some pos =>
           let strPos := fileMap.ofPosition pos
-          String.Pos.Raw.extract fileMap.source 0 strPos
+          fileMap.source.extract 0 strPos
       | none => ""
       return .ok («prefix» ++ "\n" ++ "theorem " ++ (← x.toString) ++ " := sorry")
 

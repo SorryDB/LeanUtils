@@ -1,7 +1,7 @@
 import bins.ExtractGoal
 
 /--
-info: {"ok": "\ntheorem mytheorem : True := sorry"}
+info: {"ok": "import Lean\n\n\ntheorem mytheorem : True := sorry"}
 -/
 #guard_msgs in
 #eval do

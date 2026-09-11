@@ -42,26 +42,45 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     else return none
   | _ => return none
 
+/-- One `sorry` found in a file.
+
+`startByte`/`endByte` and `kind` are emitted by `ExtractSorry` and consumed by
+tools that rewrite the source (a byte range is what a splice needs; `kind`
+says whether the token is the `sorry` *tactic* or the `sorry` *term*, which
+decides whether a replacement needs a leading `by`).  They are optional on
+input so that a record with only line/column positions -- the shape stored in
+the SorryDB database -- still deserializes. -/
 structure ParsedSorry where
   goal : String
   startPos : Position
   endPos : Position
   parentDecl : Name
   hash : UInt64
+  startByte : Option Nat := none
+  endByte : Option Nat := none
+  /-- `"tactic"` or `"term"`; `none` accepts either. -/
+  kind : Option String := none
 deriving DecidableEq, FromJson
 
+/-- `true` unless `kind` is set and differs from `k`. -/
+def ParsedSorry.acceptsKind (ps : ParsedSorry) (k : String) : Bool :=
+  ps.kind.all (· == k)
+
 instance : ToJson ParsedSorry where
-  toJson ps := Json.mkObj [
-    ("goal", Json.str ps.goal),
-    ("location", Json.mkObj [
-      ("start_line", Json.num ps.startPos.line),
-      ("start_column", Json.num ps.startPos.column),
-      ("end_line", Json.num ps.endPos.line),
-      ("end_column", Json.num ps.endPos.column)
-    ]),
-    ("parentDecl", Json.str ps.parentDecl.toString),
-    ("hash", Json.num ps.hash.toNat)
-  ]
+  toJson ps :=
+    let location := [
+        ("start_line", Json.num ps.startPos.line),
+        ("start_column", Json.num ps.startPos.column),
+        ("end_line", Json.num ps.endPos.line),
+        ("end_column", Json.num ps.endPos.column)
+      ] ++ (ps.startByte.map fun b => ("start_byte", Json.num b)).toList
+        ++ (ps.endByte.map fun b => ("end_byte", Json.num b)).toList
+    Json.mkObj <| [
+      ("goal", Json.str ps.goal),
+      ("location", Json.mkObj location),
+      ("parentDecl", Json.str ps.parentDecl.toString),
+      ("hash", Json.num ps.hash.toNat)
+    ] ++ (ps.kind.map fun k => ("kind", Json.str k)).toList
 
 def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
     SorryData Out → ParsedSorry :=
@@ -72,6 +91,9 @@ def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
       endPos := fileMap.toPosition stx.getTailPos?.get!
       parentDecl
       hash := Hashable.hash <| ToString.toString out
+      startByte := some stx.getPos?.get!.byteIdx
+      endByte := some stx.getTailPos?.get!.byteIdx
+      kind := some (if isSorryTactic stx then "tactic" else "term")
     }
 
 instance : ToString ParsedSorry where

@@ -1,6 +1,6 @@
 name = "LeanUtils"
 version = "0.1.0"
-defaultTargets = ["KernelCheck", "ExtractSorry"]
+defaultTargets = ["KernelCheck", "ExtractSorry", "ExtractGoal"]
 testDriver = "LeanUtilsTest"
 
 [[lean_lib]]
@@ -18,6 +18,11 @@ root = "bins.KernelCheck"
 [[lean_exe]]
 name = "ExtractSorry"
 root = "bins.ExtractSorry"
+supportInterpreter = true
+
+[[lean_exe]]
+name = "ExtractGoal"
+root = "bins.ExtractGoal"
 supportInterpreter = true
 
 # `#guard_msgs` golden tests plus their fixture files.  Building the fixtures is

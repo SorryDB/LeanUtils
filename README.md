@@ -114,6 +114,47 @@ elaborate.
 | `--show-proofs` | `pp.proofs := true` on the statement: proofs nested in data print instead of `⋯` (lossless by proof irrelevance) |
 | `--abstract-proofs` | hoist closed `Prop`-typed subterms of the goal into binders `sorrydb_prf_i`, `_` at the call site; only `Prop`s, so the statement stays equivalent |
 
+### Flag combinations that have worked
+
+The flags are independent, but not every combination is meaningful, and the
+useful ones form an escalation ladder: start compact, and add flags only when
+the previous rendering failed to elaborate at the insertion point. This is the
+order used to convert the SorryDB evaluation split (about 590 sorries across
+~100 projects); the last column says how often each rung was the first one to
+succeed there.
+
+| rung | flags | fixes | share |
+|---|---|---|---|
+| 1 | *(none)* | — | ~94% |
+| 2 | `--sanitize-context` | context polluted by `let`s, `sorryAx`-tainted or inaccessible locals | ~5% |
+| 3 | `--analyze` | call site fails with *don't know how to synthesize implicit argument* | <1% |
+| 4 | `--analyze --assumption-holes` | the call has `?_` holes for inaccessible locals | <1% |
+| 5 | `--analyze --expr-signature --no-fun-binder-types --no-field-notation` | statement fails to elaborate: forced `fun (a : T) ↦` ascriptions, `X.f` resolving to the wrong constant | <1% |
+| 6 | rung 5 `+ --no-coercion-types` | `⇑f : A → B` ascriptions losing the bundled hom's implicits | rare |
+| 7 | `--analyze --expr-signature --coe-explicit` | typeclass problem stuck on a coercion | rare |
+| 8 | rung 5 `+ --numeric-types` | numerals defaulting to the wrong type (`-1` becoming `ℤ`) | rare |
+| 9 | rung 5 `+ --show-proofs` | *omitted terms (⋯)*: a proof nested in a data value | rare |
+| 10 | `--analyze --abstract-proofs`, optionally with the rung-5 flags or `--show-proofs` | *omitted terms* or *depends on an earlier sorry* where the offending subterm is a closed `Prop` | rare |
+
+Notes:
+
+* Rungs 5–10 need `--expr-signature`: the default signature printer works on
+  the bare constant, so `pp.*` flags and `pp.analyze` have nothing to act on
+  there. `--coe-explicit` switches `pp.analyze` on by itself.
+* `--assumption-holes` and `--abstract-proofs` only matter when the call
+  contains `?_`; the first substitutes `(by assumption)`, the second `_`,
+  which unification fills with the original proof.
+* Later rungs often render the same text as an earlier one (e.g. `--analyze`
+  changes nothing when no implicit needs naming). Comparing renderings before
+  compiling avoids paying for a duplicate.
+* Rung 9 is the one that recovers most *omitted terms* refusals; fully
+  explicit printing (`pp.all`) recovers no more than it does and produces
+  statements 2–35× larger, so it is not offered as a flag.
+* When one token closes several goals, the application closes only the goal
+  the record names. The caller has to keep the siblings as sorries, e.g. by
+  splicing `first | exact <application> | sorry`; that is a splice decision,
+  not a rendering flag.
+
 ## KernelCheck
 
 Elaborates the term against the goal in the sorry's own local context, rejects

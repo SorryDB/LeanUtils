@@ -1,9 +1,15 @@
 name = "LeanUtils"
 version = "0.1.0"
-defaultTargets = ["KernelCheck", "ExtractSorry"]
+defaultTargets = ["KernelCheck", "ExtractSorry", "ExtractGoal"]
+testDriver = "LeanUtilsTest"
 
 [[lean_lib]]
 name = "LeanUtils"
+
+# The executables' root modules, as a library so that tests can import them
+# (`import bins.ExtractSorry`) and Lake knows how to build them on demand.
+[[lean_lib]]
+name = "bins"
 
 [[lean_exe]]
 name = "KernelCheck"
@@ -12,3 +18,15 @@ root = "bins.KernelCheck"
 [[lean_exe]]
 name = "ExtractSorry"
 root = "bins.ExtractSorry"
+supportInterpreter = true
+
+[[lean_exe]]
+name = "ExtractGoal"
+root = "bins.ExtractGoal"
+supportInterpreter = true
+
+# `#guard_msgs` golden tests plus their fixture files.  Building the fixtures is
+# what makes `findOLean` resolve their module names when a test re-elaborates them.
+[[lean_lib]]
+name = "LeanUtilsTest"
+globs = ["LeanUtilsTest.+"]

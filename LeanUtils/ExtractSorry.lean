@@ -36,8 +36,30 @@ where
 def extractSorries (T : InfoTree) : IO (List <| SorryData Format) :=
   traverseInfoTree ppGoalIfNoMVar T
 
+/-- One record per source token.
+
+A `sorry` *tactic* elaborates to a `sorry` *term*, so the info trees carry two
+nodes for the same token with the same goal.  They differ only in `kind`, which
+would otherwise defeat the plain deduplication; merge them and keep the
+`"tactic"` record, since that is the position the token occupies in the source
+(a replacement there needs no leading `by`). -/
+def dedupByToken (sorries : List ParsedSorry) : List ParsedSorry :=
+  sorries.foldl (init := []) fun acc ps =>
+    let sameToken (q : ParsedSorry) :=
+      q.startPos == ps.startPos && q.endPos == ps.endPos &&
+        q.parentDecl == ps.parentDecl && q.goal == ps.goal
+    match acc.find? sameToken with
+    | none => acc ++ [ps]
+    | some q =>
+      if q.kind != some "tactic" && ps.kind == some "tactic" then
+        acc.map fun r => if sameToken r then ps else r
+      else acc
+
 /-- `parseFile myLeanFile` extracts the sorries contained in the Lean file `myLeanFile`. -/
 def parseFile (path : System.FilePath) : IO (List ParsedSorry) := do
+  unsafe enableInitializersExecution
+  let projectSearchPath ← getProjectSearchPath path
+  searchPathRef.set projectSearchPath
   -- Throw an error if the oleans of the file can't be found...
   path.checkOLeans
   let (fileMap, trees) ← extractInfoTrees path
@@ -45,5 +67,4 @@ def parseFile (path : System.FilePath) : IO (List ParsedSorry) := do
   -- `extractSorries` on infotrees that arise from theorems/lemmas/definitions/...
   let sorryLists  ← trees.mapM extractSorries
   let sorryLists : List ParsedSorry := sorryLists.flatten'.map (SorryData.toParsedSorry fileMap)
-  let sorryLists := sorryLists.dedup'
-  return sorryLists
+  return dedupByToken sorryLists

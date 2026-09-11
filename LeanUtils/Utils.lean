@@ -42,26 +42,45 @@ def visitSorryNode {Out} (ctx : ContextInfo) (node : Info)
     else return none
   | _ => return none
 
+/-- One `sorry` found in a file.
+
+`startByte`/`endByte` and `kind` are emitted by `ExtractSorry` and consumed by
+tools that rewrite the source (a byte range is what a splice needs; `kind`
+says whether the token is the `sorry` *tactic* or the `sorry` *term*, which
+decides whether a replacement needs a leading `by`).  They are optional on
+input so that a record with only line/column positions -- the shape stored in
+the SorryDB database -- still deserializes. -/
 structure ParsedSorry where
   goal : String
   startPos : Position
   endPos : Position
   parentDecl : Name
   hash : UInt64
+  startByte : Option Nat := none
+  endByte : Option Nat := none
+  /-- `"tactic"` or `"term"`; `none` accepts either. -/
+  kind : Option String := none
 deriving DecidableEq, FromJson
 
+/-- `true` unless `kind` is set and differs from `k`. -/
+def ParsedSorry.acceptsKind (ps : ParsedSorry) (k : String) : Bool :=
+  ps.kind.all (· == k)
+
 instance : ToJson ParsedSorry where
-  toJson ps := Json.mkObj [
-    ("goal", Json.str ps.goal),
-    ("location", Json.mkObj [
-      ("start_line", Json.num ps.startPos.line),
-      ("start_column", Json.num ps.startPos.column),
-      ("end_line", Json.num ps.endPos.line),
-      ("end_column", Json.num ps.endPos.column)
-    ]),
-    ("parentDecl", Json.str ps.parentDecl.toString),
-    ("hash", Json.num ps.hash.toNat)
-  ]
+  toJson ps :=
+    let location := [
+        ("start_line", Json.num ps.startPos.line),
+        ("start_column", Json.num ps.startPos.column),
+        ("end_line", Json.num ps.endPos.line),
+        ("end_column", Json.num ps.endPos.column)
+      ] ++ (ps.startByte.map fun b => ("start_byte", Json.num b)).toList
+        ++ (ps.endByte.map fun b => ("end_byte", Json.num b)).toList
+    Json.mkObj <| [
+      ("goal", Json.str ps.goal),
+      ("location", Json.mkObj location),
+      ("parentDecl", Json.str ps.parentDecl.toString),
+      ("hash", Json.num ps.hash.toNat)
+    ] ++ (ps.kind.map fun k => ("kind", Json.str k)).toList
 
 def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
     SorryData Out → ParsedSorry :=
@@ -72,6 +91,9 @@ def SorryData.toParsedSorry {Out} [ToString Out] (fileMap : FileMap) :
       endPos := fileMap.toPosition stx.getTailPos?.get!
       parentDecl
       hash := Hashable.hash <| ToString.toString out
+      startByte := some stx.getPos?.get!.byteIdx
+      endByte := some stx.getTailPos?.get!.byteIdx
+      kind := some (if isSorryTactic stx then "tactic" else "term")
     }
 
 instance : ToString ParsedSorry where
@@ -131,7 +153,17 @@ partial def getAllLakePaths (path : System.FilePath) : IO (Array System.FilePath
   unless ← path.pathExists do return #[]
   let dirEntries := (← path.readDir).map IO.FS.DirEntry.path
   if dirEntries.contains (path / ".lake") then
-    return (← getAllLakePaths <| path / ".lake/packages").push (path / ".lake/build/lib/lean")
+    -- A built package.  Recurse into its own dependencies, and ALSO into any
+    -- sub-packages sitting directly inside it: one git dependency can ship
+    -- several packages side by side (e.g. `packages/Hammer/HammerCore`), which
+    -- lake puts on LEAN_PATH but which this short-circuit would otherwise skip.
+    let nested ← getAllLakePaths <| path / ".lake/packages"
+    let subPkgs ← dirEntries.filterM fun entry => do
+      if entry == path / ".lake" then return false
+      if !(← entry.isDir) then return false
+      (entry / ".lake").pathExists
+    let fromSubPkgs ← subPkgs.mapM getAllLakePaths
+    return (nested ++ fromSubPkgs.flatten).push (path / ".lake/build/lib/lean")
   else
     let dirEntries ← dirEntries.filterM fun path ↦ path.isDir
     return (← dirEntries.mapM getAllLakePaths).flatten
@@ -144,7 +176,13 @@ def getProjectSearchPath (path : System.FilePath) : IO (System.SearchPath) := do
   let rootDir ← getProjectRootDirPath path
   let paths ← getAllLakePaths rootDir
   let originalSearchPath ← getBuiltinSearchPath (← findSysroot)
-  return originalSearchPath.append paths.toList
+  -- Honour LEAN_PATH when it is set: `lake env` derives it from the manifest,
+  -- which is authoritative for layouts a directory walk cannot infer.
+  let envPaths : List System.FilePath ← do
+    match ← IO.getEnv "LEAN_PATH" with
+    | some raw => pure (System.SearchPath.parse raw)
+    | none => pure []
+  return originalSearchPath.append (paths.toList ++ envPaths)
 
 def System.FilePath.checkOLeans (path : System.FilePath) : IO Unit := do
   discard <| Lean.findOLean (← moduleNameOfFileName path none)

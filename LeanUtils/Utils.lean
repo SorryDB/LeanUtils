@@ -131,7 +131,17 @@ partial def getAllLakePaths (path : System.FilePath) : IO (Array System.FilePath
   unless ← path.pathExists do return #[]
   let dirEntries := (← path.readDir).map IO.FS.DirEntry.path
   if dirEntries.contains (path / ".lake") then
-    return (← getAllLakePaths <| path / ".lake/packages").push (path / ".lake/build/lib/lean")
+    -- A built package.  Recurse into its own dependencies, and ALSO into any
+    -- sub-packages sitting directly inside it: one git dependency can ship
+    -- several packages side by side (e.g. `packages/Hammer/HammerCore`), which
+    -- lake puts on LEAN_PATH but which this short-circuit would otherwise skip.
+    let nested ← getAllLakePaths <| path / ".lake/packages"
+    let subPkgs ← dirEntries.filterM fun entry => do
+      if entry == path / ".lake" then return false
+      if !(← entry.isDir) then return false
+      (entry / ".lake").pathExists
+    let fromSubPkgs ← subPkgs.mapM getAllLakePaths
+    return (nested ++ fromSubPkgs.flatten).push (path / ".lake/build/lib/lean")
   else
     let dirEntries ← dirEntries.filterM fun path ↦ path.isDir
     return (← dirEntries.mapM getAllLakePaths).flatten
@@ -144,7 +154,13 @@ def getProjectSearchPath (path : System.FilePath) : IO (System.SearchPath) := do
   let rootDir ← getProjectRootDirPath path
   let paths ← getAllLakePaths rootDir
   let originalSearchPath ← getBuiltinSearchPath (← findSysroot)
-  return originalSearchPath.append paths.toList
+  -- Honour LEAN_PATH when it is set: `lake env` derives it from the manifest,
+  -- which is authoritative for layouts a directory walk cannot infer.
+  let envPaths : List System.FilePath ← do
+    match ← IO.getEnv "LEAN_PATH" with
+    | some raw => pure (System.SearchPath.parse raw)
+    | none => pure []
+  return originalSearchPath.append (paths.toList ++ envPaths)
 
 def System.FilePath.checkOLeans (path : System.FilePath) : IO Unit := do
   discard <| Lean.findOLean (← moduleNameOfFileName path none)
